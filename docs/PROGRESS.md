@@ -91,3 +91,30 @@ node scripts/verify-task2.mjs   # 24/24 通过
 ### 下一步
 
 - Task 3：四层评估记录、连续 3 题 0 分中止、L0–L5 自动分级、评估报告。
+
+## Task 3（同日完成）
+
+### 已完成
+
+- ✅ R2 连续 3 题 0 分自动中止：`POST /api/assessments/scale-score`，按 `sessionId` 维护得分序列；支持 `reset` 重置。
+- ✅ L0–L5 自动分级：`AutoLevelService` 按身体稳定 → 视觉效率 → 视觉感知 → 视觉运动整合 → 课堂应用 → 全部达标 的优先级计算。
+- ✅ 评估记录：`POST /api/assessments/records` 写入六类评估指标、NSUCO、六维雷达与 `autoLevel`，并回写学生 `currentLevel`。
+- ✅ 记录查询：`GET /api/assessments/:studentId/records` 按 `evalPhase` 分组返回。
+- ✅ 评估报告：`POST /api/assessments/:id/generate-report` 生成 HTML 报告并返回 `/api/reports/<id>.html` 静态 URL。
+
+### 验证
+
+```bash
+node scripts/verify-task3.mjs   # 16/16 通过
+# 含：连续 3 次 0 分中止、L0/L1/L2/L3/L4/L5 六个分支、currentLevel 回写、分组查询、报告可访问、审计日志
+```
+
+### 偏差
+
+- 报告格式为 HTML（任务卡验收写“PDF 文件 URL”）；中文 PDF 需要额外 CJK 字体与 PDF 引擎，当前交付可直接打开/打印的 HTML 报告。
+- R2 的连续得分状态保存在进程内存，单机版单实例可用；多实例或重启后需要持久化到 Redis/数据库。
+- 自动分级对未提供的指标按“未异常/达标”处理；课堂适应项未录入时默认为通过（L5），只有显式传 `false` 才降为 L4。
+
+### 下一步
+
+- Task 4：IEP 计划、课堂五段式记分台、R3 晋级触发、R4 护眼硬锁。

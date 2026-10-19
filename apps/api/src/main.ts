@@ -5,7 +5,9 @@
  */
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { config as loadEnv } from 'dotenv';
+import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -16,10 +18,15 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 loadEnv({ path: resolve(__dirname, '../.env') });
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.setGlobalPrefix('api');
   app.enableCors({ origin: true, credentials: true });
+
+  // 评估报告静态文件：apps/api/data/reports → /api/reports/<id>.html
+  const reportDir = resolve(__dirname, '../data/reports');
+  mkdirSync(reportDir, { recursive: true });
+  app.useStaticAssets(reportDir, { prefix: '/api/reports/' });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
