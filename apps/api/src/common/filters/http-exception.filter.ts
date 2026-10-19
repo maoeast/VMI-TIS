@@ -35,11 +35,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
           ? ((payload as { message: unknown[] }).message.join('; ') as string)
           : String((payload as { message?: unknown }).message ?? '请求失败');
 
+    const extra: Record<string, unknown> = {};
+    if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+      for (const [key, value] of Object.entries(
+        payload as Record<string, unknown>,
+      )) {
+        if (!['statusCode', 'message', 'error'].includes(key)) {
+          extra[key] = value;
+        }
+      }
+    }
+
     const body: Record<string, unknown> = {
       statusCode: status,
       message,
       path: request.url,
       timestamp: new Date().toISOString(),
+      ...extra,
     };
 
     if (status === HttpStatus.FORBIDDEN && message.includes('红区')) {

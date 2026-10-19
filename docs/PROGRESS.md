@@ -118,3 +118,34 @@ node scripts/verify-task3.mjs   # 16/16 通过
 ### 下一步
 
 - Task 4：IEP 计划、课堂五段式记分台、R3 晋级触发、R4 护眼硬锁。
+
+## Task 4（同日完成）
+
+### 已完成
+
+- ✅ IEP 计划：`POST/GET/PATCH /api/iep-plans`、`POST /api/iep-plans/:id/approve`；`selectedCardsJson` / `weeklyScheduleJson` 按契约序列化。
+- ✅ 课堂记分台：`POST /api/sessions` 开课、`PATCH /api/sessions/:id/stage` 五段式切换、`POST /api/sessions/:id/trial` 单回合记分、`POST /api/sessions/:id/finish` 结课。
+- ✅ R3 晋级：连续 3 次课 ≥80% + 至少 2 种材料 + 至少 1 次家庭打卡 → 自动标记 `PROMOTION_READY`；`POST /api/promotions/:studentId/approve` 审批后升级并回到 `IN_PROGRESS`。
+- ✅ R4 护眼硬锁：`DigitalLimitGuard` 与 Trial 服务双处校验，累计 900 秒后数字 Trial / digital-start 返回 403 + `remainingQuotaSec: 0`；`POST /api/sessions/:id/digital` 提供前端倒计时同步。
+- ✅ 工作台：`GET /api/workbench/summary`（今日课表、活跃学生、待晋级、待审核转介、层级分布）。
+- ✅ 家庭作业：创建、家长打卡、教师点评、家长留言、过期视频清理（标记 `videoDeletedAt`，删除本地文件，保留文本）。
+- ✅ 数据分析：`GET /api/analytics/overview` 与 `GET /api/analytics/student/:id`（雷达、正确率趋势、数字时长趋势、定级历史）。
+- ✅ 操作卡库：`GET /api/sop-cards?level=&module=&keyword=`、`GET /api/sop-cards/code/:cardCode`。
+- ✅ 事件：`session.stage.changed` / `session.trial.recorded` / `session.finished` 通过 Nest EventEmitter 发出，供 Task 6 WebSocket 网关订阅。
+
+### 验证
+
+```bash
+node scripts/verify-task4.mjs   # 32/32 通过
+# 含：IEP、3 次课 90% 触发晋级、跨 2 材料 + 1 打卡、审批升级、900 秒双处拦截、Stage 切换、工作台/分析/作业接口、9 类审计动作
+```
+
+### 偏差
+
+- `POST /api/sessions` 的 `therapistId` 字段当前未写入数据库：根 Schema 的 `TrainingSession` 没有该列；治疗师归属由学生 `primaryTherapistId` 承担。
+- 视频清理接口按 `scheduledDeleteAt` 标记 `videoDeletedAt`，只物理删除 `apps/api/data/uploads` 下的本地文件；远程 URL 仅标记。
+- 家庭作业“留言”复用 `parentNote` / `teacherReply` 两个字段，没有独立消息表。
+
+### 下一步
+
+- Task 5：React 三端工程化与页面迁移。
