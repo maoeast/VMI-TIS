@@ -12,7 +12,7 @@
 ### 基准文件（所有任务必读）
 1. `prisma/schema.prisma` - 8 张表完整数据库 Schema
 2. `packages/shared-types/src/index.ts` - 前后端共享类型契约
-3. `docs/vmi_tis_prototype.html` - 3055 行完整三端交互原型（**严格以此为视觉 1:1 基准**）
+3. `docs/vmi_tis_prototype.html` - 3076 行完整三端交互原型（**严格以此为视觉 1:1 基准**）
 4. `docs/vmi_tis.md` - 完整需求规格说明书 V2.1
 
 ### 硬性约束（所有任务通用）
@@ -45,9 +45,7 @@ apps/api/
 │   │   └── seed.ts                      # Seed 脚本（13 张操作卡 + 6 名学生）
 │   └── config/
 │       └── database.config.ts           # 根据 NODE_ENV 切换 SQLite/PostgreSQL
-├── prisma/
-│   └── schema.prisma                    # （已存在，无需修改）
-├── package.json                         # 添加 "prisma": { "seed": "ts-node prisma/seed.ts" }
+├── package.json                         # 添加 "prisma": { "seed": "ts-node --transpile-only src/prisma/seed.ts" }
 └── tsconfig.json
 
 deploy/
@@ -58,7 +56,7 @@ deploy/
 ### 关键逻辑实现
 
 #### 1.1 Seed 脚本数据源（13 张操作卡）
-从 `vmi_tis_prototype.html` L1671-1849 提取完整操作卡定义：
+从 `vmi_tis_prototype.html` L1847-1861 提取完整操作卡定义（`LIB_CARDS`，13 张）：
 ```javascript
 // prisma/seed.ts 部分代码示例
 const SOP_CARDS = [
@@ -83,12 +81,12 @@ const SOP_CARDS = [
     }),
     cueTextJson: JSON.stringify(['请趴在滑板上', '用手推动地面向前滑', '推球让它滚到墙边'])
   },
-  // ... 其余 12 张操作卡（完整代码见原型 L1671-1849）
+  // ... 其余 12 张操作卡（原型 L1848-1861 提供 code/mod/level/title/aid/cue/desc 七个字段）
 ];
 ```
 
 #### 1.2 6 名示例学生数据
-从 `vmi_tis_prototype.html` L1784-1849 提取：
+从 `vmi_tis_prototype.html` L1741-1844 提取（`STUDENT_DB`，6 名）：
 ```javascript
 const SEED_STUDENTS = [
   {
@@ -104,101 +102,24 @@ const SEED_STUDENTS = [
     parentPhone: '138****5678',
     chiefComplaint: '注意力分散，抄写慢且错漏多'
   },
-  // ... 其余 5 名学生（完整数据见原型 L1784-1849）
+  // ... 其余 5 名学生（完整数据见原型 L1741-1844）
 ];
 ```
 
 #### 1.3 零安装单机版启动脚本（Windows bat）
-参考需求文档 `vmi_tis.md` L468-492 的完整规格：
-```batch
-@echo off
-chcp 65001 >nul
-echo ========================================
-echo 星眸智康 VMI-TIS 单机版启动中...
-echo ========================================
-
-REM 检查端口占用
-netstat -ano | findstr :3000 >nul
-if %errorlevel%==0 (
-  echo [错误] 端口 3000 已被占用，请关闭占用进程后重试
-  pause
-  exit /b 1
-)
-
-REM 初始化数据库
-if not exist data\vmi_tis.db (
-  echo [初始化] 创建 SQLite 数据库并导入演示数据...
-  set DATABASE_URL=file:./data/vmi_tis.db
-  call npx prisma db push
-  call npx prisma db seed
-)
-
-REM 启动后端服务
-echo [启动] 后端 API 服务（端口 3000）...
-start "VMI-TIS API" /MIN node apps/api/dist/main.js
-
-REM 等待服务就绪
-timeout /t 3 >nul
-
-REM 打开浏览器
-echo [就绪] 系统已启动，浏览器即将打开
-start http://localhost:3000
-echo.
-echo 关闭此窗口将停止服务
-pause
-```
+参考需求文档 `vmi_tis.md` L285-295 的规格：
+已实现文件：`deploy/start_standalone.bat`（配套 `deploy/run_api.bat`）。脚本负责端口检查、依赖/构建、`prisma db push`、`npm run db:seed`、健康检查、打开浏览器，并在退出时停止 API。
 
 #### 1.4 Docker Compose 服务器版
-参考需求文档 L494-534：
-```yaml
-version: '3.8'
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: vmi-tis-db
-    environment:
-      POSTGRES_USER: vmi
-      POSTGRES_PASSWORD: vmi2026
-      POSTGRES_DB: vmi_tis
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vmi"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  api:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: vmi-tis-api
-    environment:
-      DATABASE_URL: "postgresql://vmi:vmi2026@postgres:5432/vmi_tis"
-      NODE_ENV: production
-    ports:
-      - "3000:3000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: >
-      sh -c "npx prisma migrate deploy &&
-             npx prisma db seed &&
-             node dist/main.js"
-
-volumes:
-  pgdata:
-```
+参考需求文档 L297-305：
+已实现文件：`deploy/docker-compose.yml`（配套 `apps/api/Dockerfile`）。关键点：PostgreSQL 15 + API 双服务；构建期按 PostgreSQL provider 生成 Schema；启动时执行 `prisma db push`、Seed，再启动 API。
 
 ### 验收标准（供 ChatGPT 审查）
-- [ ] `npx prisma db push` 在 SQLite 模式下成功生成 `./data/vmi_tis.db`
-- [ ] `npx prisma db seed` 导入 13 张操作卡 + 6 名学生后，执行 `SELECT COUNT(*) FROM sop_cards` 返回 13
+- [ ] `npm run db:push` 在 SQLite 模式下成功生成 `apps/api/data/vmi_tis.db`
+- [ ] `npm run db:seed` 导入 13 张操作卡 + 6 名学生；`npm run db:verify` 全部通过（`sop_cards = 13`、`students = 6`）
 - [ ] `start_standalone.bat` 双击后自动打开浏览器访问 `http://localhost:3000`
 - [ ] `docker-compose up` 启动后，容器健康检查通过且 API 接口 `GET /api/health` 返回 200
-- [ ] 切换 `DATABASE_URL` 为 PostgreSQL 后，相同 Seed 脚本无需修改即可运行
+- [ ] 切换 `provider` 为 PostgreSQL 并设置对应 `DATABASE_URL` 后，相同 Seed 脚本无需修改即可运行
 
 ---
 
@@ -669,7 +590,7 @@ export class DigitalLimitGuard implements CanActivate {
 ## Task 5: 前端 React 工程化与三终端迁移
 
 ### 目标
-将原型 HTML 的 3055 行 JavaScript 逻辑迁移到 React 18 + TypeScript + Vite 工程，实现三终端（教师 Web 工作台、学生 Pad 端、家长小程序）的组件化拆分。
+将原型 HTML 的 3076 行 JavaScript 逻辑迁移到 React 18 + TypeScript + Vite 工程，实现三终端（教师 Web 工作台、学生 Pad 端、家长小程序）的组件化拆分。
 
 ### 产出文件
 ```

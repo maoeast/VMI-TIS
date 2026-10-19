@@ -12,8 +12,8 @@
 ### 1.1 核心工程契约文件（3 份）
 | 文件路径 | 内容简介 | 字符数 | 用途 |
 |---------|---------|--------|-----|
-| `prisma/schema.prisma` | 8 张表完整数据库 Schema | 10,373 | DeepSeek 后端开发基准 |
-| `packages/shared-types/src/index.ts` | 前后端共享类型契约（15 枚举 + 12 DTO） | 10,353 | DeepSeek 类型引用基准 |
+| `prisma/schema.prisma` | 8 张表完整数据库 Schema | 10,360 | DeepSeek 后端开发基准 |
+| `packages/shared-types/src/index.ts` | 前后端共享类型契约（12 枚举 + 8 实体接口 + 10 DTO） | 10,353 | DeepSeek 类型引用基准 |
 | `docs/IMPLEMENTATION_TASKS.md` | 6 张原子级任务卡（含完整代码示例） | 28,652 | DeepSeek 逐任务执行手册 |
 
 ### 1.2 执行指导文档（3 份）
@@ -26,8 +26,8 @@
 ### 1.3 需求与原型文件（2 份）
 | 文件路径 | 内容简介 | 行数 | 用途 |
 |---------|---------|-----|-----|
-| `docs/vmi_tis.md` | 完整需求规格说明书 V2.1 | 635 | 业务规则权威基准 |
-| `docs/vmi_tis_prototype.html` | 完整三端交互原型 | 3055 | 视觉还原 1:1 基准 |
+| `docs/vmi_tis.md` | 完整需求规格说明书 V2.1 | 424 | 业务规则权威基准 |
+| `docs/vmi_tis_prototype.html` | 完整三端交互原型 | 3076 | 视觉还原 1:1 基准 |
 
 ---
 
@@ -59,14 +59,14 @@ npx prisma db push
 | **R4** | 15 分钟护眼硬锁 | 累计数字训练 900 秒 | 全屏遮罩 + 禁止继续游戏 + 需教师解锁 | `digital-limit.guard.ts` + 前端遮罩组件 |
 
 ### 2.3 原型行号索引表（防幻觉基准）
-**决策：** 所有迁移任务必须以真实行号索引表为准（`vmi_tis.md` L548-563）
+**决策：** 所有迁移任务必须以真实行号索引表为准（`vmi_tis.md` L320-335）
 
 **常见误区纠正：**
 | 误判函数名 | 真实函数名 | 精确行号 | 对应迁移目标 |
 |-----------|-----------|---------|-------------|
 | ❌ `nextStageSession()` | ✅ `selectSessionStage()` | L2292-2310 | `SessionPage.tsx` |
 | ❌ `playBubbleGame()` | ✅ `initPadBubbleLoop()` | L2631-2652 | `BubbleGame.tsx` |
-| ❌ 原型 2676 行 | ✅ 原型 3055 行 | - | 完整读取避免遗漏 |
+| ❌ 原型 2676 行 | ✅ 原型 3076 行 | - | 完整读取避免遗漏 |
 
 ### 2.4 技术栈选型（强制清单）
 **决策：** 严格遵守需求文档 L122-131 的技术栈强制清单
@@ -123,19 +123,19 @@ ChatGPT（质量保证官）
 
 ### 4.1 文件齐全性（8 项）
 - [ ] `prisma/schema.prisma` 存在且包含 8 张表定义
-- [ ] `packages/shared-types/src/index.ts` 存在且包含 15 个枚举 + 12 个 DTO
+- [ ] `packages/shared-types/src/index.ts` 存在且包含 12 个枚举 + 8 个实体接口 + 10 个 DTO
 - [ ] `docs/IMPLEMENTATION_TASKS.md` 存在且包含 6 张任务卡
 - [ ] `docs/DEEPSEEK_HANDOFF.md` 存在（完整版接力指令）
 - [ ] `docs/QUICK_START_CHECKLIST.md` 存在（精简版快速启动）
 - [ ] `docs/CHATGPT_REVIEW_MANUAL.md` 存在（审查官手册）
-- [ ] `docs/vmi_tis.md` 存在（需求规格说明书 V2.1，635 行）
-- [ ] `docs/vmi_tis_prototype.html` 存在（完整原型，3055 行）
+- [ ] `docs/vmi_tis.md` 存在（需求规格说明书 V2.1，424 行）
+- [ ] `docs/vmi_tis_prototype.html` 存在（完整原型，3076 行）
 
 ### 4.2 关键行号确认（3 项）
 打开 `docs/vmi_tis.md`，确认以下内容可见：
 - [ ] **L191-219**：四大强制规则（R1-R4）详细定义
-- [ ] **L228-412**：Prisma Schema 完整定义（与 `prisma/schema.prisma` 一致）
-- [ ] **L548-563**：原型真实 DOM 与 JS 函数行号索引表
+- [ ] **L223-230**：数据库 Schema 的权威指向（唯一事实源为 `prisma/schema.prisma`）
+- [ ] **L320-335**：原型真实 DOM 与 JS 函数行号索引表
 
 ### 4.3 验收标准确认（1 项）
 打开 `docs/CHATGPT_REVIEW_MANUAL.md`，确认：
@@ -155,48 +155,41 @@ ChatGPT（质量保证官）
 ✅ packages/shared-types/src/index.ts
 ✅ docs/IMPLEMENTATION_TASKS.md
 ✅ docs/vmi_tis.md（需求规格说明书 V2.1）
-✅ docs/vmi_tis_prototype.html（完整原型，3055 行）
+✅ docs/vmi_tis_prototype.html（完整原型，3076 行）
 
 关键行号确认：
 ✅ L191-219：四大强制规则
-✅ L228-412：Prisma Schema
-✅ L548-563：原型函数行号索引表
+✅ L223-230：数据库 Schema 权威指向
+✅ L320-335：原型函数行号索引表
 
 现在开始执行 Task 1 - 后端基础设施与数据库初始化。
 ```
 
 ### 5.2 第二步：初始化工程
+
+工程直接建在仓库根目录；`prisma/schema.prisma` 与 `packages/shared-types` 只保留根目录一份，`apps/api` 通过 npm workspace 引用：
+
 ```bash
-# 创建工程目录
-mkdir -p vmi-tis-project/apps/api/src/{prisma,config,students,assessments,iep,sessions,websocket,common}
-mkdir -p vmi-tis-project/packages/shared-types/src
-mkdir -p vmi-tis-project/deploy
-cd vmi-tis-project/apps/api
+# 安装 workspace 依赖
+npm install
 
-# 初始化 package.json
-npm init -y
+# 生成 Prisma Client（SQLite 默认）
+npm run db:generate
 
-# 安装依赖
-npm install @nestjs/core @nestjs/common @nestjs/platform-express
-npm install @prisma/client prisma
-npm install --save-dev @types/node typescript ts-node
+# 建库并导入演示数据
+npm run db:push
+npm run db:seed
+npm run db:verify
 
-# 复制契约文件
-cp ../../prisma/schema.prisma ./prisma/
-cp ../../packages/shared-types/src/index.ts ./src/shared-types.ts
-
-# 生成 Prisma Client
-npx prisma generate
-
-# 推送数据库（SQLite 模式）
-export DATABASE_URL="file:./data/vmi_tis.db"
-npx prisma db push
+# 构建并启动
+npm run build
+npm run start
 ```
 
 ### 5.3 第三步：编写 Seed 脚本
 参考 `docs/IMPLEMENTATION_TASKS.md` Task 1.1：
-- 13 张操作卡数据源：`vmi_tis_prototype.html` L1671-1849
-- 6 名学生数据源：`vmi_tis_prototype.html` L1784-1849
+- 13 张操作卡数据源：`vmi_tis_prototype.html` L1847-1861
+- 6 名学生数据源：`vmi_tis_prototype.html` L1741-1844
 
 ### 5.4 第四步：每日汇报
 每天结束时更新 `docs/PROGRESS.md`：

@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: vmi-tis-db
+    environment:
+      POSTGRES_USER: vmi
+      POSTGRES_PASSWORD: vmi2026
+      POSTGRES_DB: vmi_tis
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vmi -d vmi_tis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: vmi-tis-api
+    environment:
+      DATABASE_URL: "postgresql://vmi:vmi2026@postgres:5432/vmi_tis"
+      NODE_ENV: production
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "node scripts/prepare-schema.mjs --target postgresql &&
+             npx prisma db push --schema prisma/.generated/schema.postgresql.prisma --skip-generate &&
+             cd apps/api && npx ts-node --transpile-only src/prisma/seed.ts &&
+             cd /app && node apps/api/dist/main.js"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

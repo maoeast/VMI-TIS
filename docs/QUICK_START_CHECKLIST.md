@@ -9,13 +9,13 @@
 
 ### 1. 基准文件齐全性
 - [ ] `prisma/schema.prisma` 存在且包含 8 张表定义
-- [ ] `packages/shared-types/src/index.ts` 存在且包含 15 个枚举 + 12 个 DTO
+- [ ] `packages/shared-types/src/index.ts` 存在且包含 12 个枚举 + 8 个实体接口 + 10 个 DTO
 - [ ] `docs/IMPLEMENTATION_TASKS.md` 存在且包含 6 张任务卡
-- [ ] `docs/vmi_tis.md` 存在（需求规格说明书 V2.1，635 行）
-- [ ] `docs/vmi_tis_prototype.html` 存在（完整原型，3055 行）
+- [ ] `docs/vmi_tis.md` 存在（需求规格说明书 V2.1，424 行）
+- [ ] `docs/vmi_tis_prototype.html` 存在（完整原型，3076 行）
 
 ### 2. 关键行号索引确认
-打开 `docs/vmi_tis.md`，跳转到 **L548-563**，确认看到以下表格：
+打开 `docs/vmi_tis.md`，跳转到 **L320-335**，确认看到以下表格：
 ```
 | 模块归属 | 原型 DOM 容器 ID & 行号 | 原型真实 JS 函数名 & 精确行号 | 对应迁移目标 |
 | --- | --- | --- | --- |
@@ -36,55 +36,35 @@
 ## 🚀 Day 1-2: Task 1 - 后端基础设施
 
 ### 快速执行脚本
+
+工程直接建在仓库根目录；契约文件只保留根目录一份，`apps/api` 通过 npm workspace 引用：
+
 ```bash
-# 1. 创建工程目录
-mkdir -p vmi-tis-project/apps/api/src/{prisma,config,students,assessments,iep,sessions,websocket,common}
-mkdir -p vmi-tis-project/packages/shared-types/src
-mkdir -p vmi-tis-project/deploy
-cd vmi-tis-project/apps/api
-
-# 2. 初始化 package.json
-npm init -y
-npm install @nestjs/core @nestjs/common @nestjs/platform-express
-npm install @prisma/client prisma
-npm install --save-dev @types/node typescript ts-node
-
-# 3. 复制 Schema（假设已生成在上级目录）
-cp ../../prisma/schema.prisma ./prisma/
-cp ../../packages/shared-types/src/index.ts ./src/shared-types.ts
-
-# 4. 生成 Prisma Client
-npx prisma generate
-
-# 5. 推送数据库（SQLite 模式）
-export DATABASE_URL="file:./data/vmi_tis.db"
-npx prisma db push
-
-# 6. 编写 Seed 脚本
-# 参考 docs/IMPLEMENTATION_TASKS.md Task 1.1
-# 13 张操作卡数据源：vmi_tis_prototype.html L1671-1849
-# 6 名学生数据源：vmi_tis_prototype.html L1784-1849
-
-# 7. 执行 Seed
-npx prisma db seed
-
-# 8. 验证数据
-npx prisma studio
-# 检查 sop_cards 表是否有 13 条记录
-# 检查 students 表是否有 6 条记录
+npm install
+npm run db:generate
+npm run db:push
+npm run db:seed
+npm run db:verify
+npm run build
+npm run start:dev   # 开发模式；生产用 npm run start
 ```
+
+数据源与字段说明：
+- 13 张操作卡：`vmi_tis_prototype.html` L1847-1861
+- 6 名示例学生：`vmi_tis_prototype.html` L1741-1844
+- 原型每卡只有 7 个字段；`targetSkill / procedureStepsJson / passCriteria / digitalGameMode / parentTaskJson` 按卡片语义补写，`cardCode` 规范化为 `Mx-x-x`。
 
 ### 验收标准（完成后自查）
 ```bash
-# ✅ 数据库文件存在
-ls ./data/vmi_tis.db
+# ✅ 数据库文件存在（在仓库根目录执行）
+ls apps/api/data/vmi_tis.db
 
 # ✅ Prisma Studio 显示 13 张操作卡
-npx prisma studio
+npx prisma studio --schema prisma/schema.prisma
 # 打开浏览器后导航至 sop_cards 表，确认有 13 条记录
 
 # ✅ start_standalone.bat 脚本生成
-cat ../../deploy/start_standalone.bat | grep "星眸智康"
+grep "星眸智康" deploy/start_standalone.bat
 # 预期输出包含启动脚本内容
 ```
 
@@ -107,7 +87,7 @@ cat ../../deploy/start_standalone.bat | grep "星眸智康"
 // src/assessments/triage.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { SubmitTriageDto } from '../shared-types';
+import { SubmitTriageDto } from '@vmi-tis/shared-types';
 
 @Injectable()
 export class TriageService {
@@ -188,8 +168,10 @@ curl -X POST http://localhost:3000/api/assessments/triage \
     "studentId":"<上面的studentId>",
     "behaviorItems":[
       {"item":"屈光参差（左右眼度数差异）","score":2.5}
-    ]
+    ],
+    "redZoneItems":[]
   }'
+# 说明：redZoneItems 由服务端重新计算，这里传空数组以满足 DTO 必填约束
 # 预期：返回 isRedZone: true
 
 # 4. 验证排课拦截
@@ -245,7 +227,7 @@ curl -X POST http://localhost:3000/api/sessions/:id/trial \
 ### 快速搭建
 ```bash
 # 1. 创建 Vite + React 工程
-cd vmi-tis-project
+# 在仓库根目录执行
 npm create vite@latest apps/web -- --template react-ts
 cd apps/web
 npm install
@@ -401,7 +383,7 @@ subagent({ role: 'coder', model: 'glm:glm-5.3-flash' });
 ```bash
 # 错误：在原型 HTML 中找不到 nextStageSession() 函数
 # 原因：函数名错误，真实名称是 selectSessionStage()
-# 解决：查阅 vmi_tis.md L548-563 的真实函数名索引表
+# 解决：查阅 vmi_tis.md L320-335 的真实函数名索引表
 ```
 
 ### 陷阱 4：忘记写来源注释

@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+dist
+**/dist
+apps/api/data
+prisma/*.db
+prisma/.generated
+.git
+.gitignore
+*.log
+docs/book
+docs/*.docx

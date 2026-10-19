@@ -1,0 +1,38 @@
+{
+  "name": "@vmi-tis/api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VMI-TIS 后端 API（NestJS 10 + Prisma 5）",
+  "scripts": {
+    "prebuild": "node ../../scripts/generate-client.mjs",
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
+    "db:generate": "node ../../scripts/generate-client.mjs",
+    "db:push": "prisma db push --schema ../../prisma/schema.prisma --skip-generate",
+    "db:seed": "ts-node --transpile-only src/prisma/seed.ts",
+    "db:verify": "ts-node --transpile-only src/prisma/verify-seed.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.4.15",
+    "@nestjs/core": "^10.4.15",
+    "@nestjs/platform-express": "^10.4.15",
+    "@prisma/client": "^5.22.0",
+    "@vmi-tis/shared-types": "*",
+    "dotenv": "^16.4.5",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.4.9",
+    "@nestjs/schematics": "^10.2.3",
+    "@types/node": "^20.14.15",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  },
+  "prisma": {
+    "seed": "ts-node --transpile-only src/prisma/seed.ts"
+  }
+}

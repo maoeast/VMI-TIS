@@ -224,193 +224,10 @@ vmi-tis-platform/
 
 为了同时兼容 `sqlite` 与 `postgresql`，模型中复杂数组/对象统一采用 `String`（JSON 序列化字符串）存储，**严禁在 `schema.prisma` 中使用 `String[]` 标量数组或 `@db.Timestamptz` 等仅 PostgreSQL 支持的语法**（否则在 SQLite 免安装单机模式下执行 `npx prisma db push` 会直接报错）。切换数据库时仅需修改 `provider`（`sqlite` 或 `postgresql`）与 `.env` 中的 `DATABASE_URL`：
 
-```
-// prisma/schema.prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  // 交付模式1（默认单机免安装版）：provider = "sqlite", DATABASE_URL = "file:./data/vmi_tis.db"
-  // 交付模式2（医院Docker服务器版）：provider = "postgresql", DATABASE_URL = "postgresql://vmi:vmi2026@localhost:5432/vmi_tis"
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
-model Student {
-  id                 String   @id @default(uuid())
-  studentCode        String   @unique @map("student_code") // 如 VMI-2026001
-  name               String
-  gender             String?
-  birthDate          DateTime @map("birth_date")
-  schoolScene        String   @map("school_scene")         // 特教学校/康复机构/资源教室/门诊
-  currentLevel       String   @default("L0") @map("current_level") // L0~L5
-  triageStatus       String   @default("PENDING_SCREENING") @map("triage_status") // PENDING_SCREENING, RED_ZONE_LOCKED, REFERRAL_UPLOADED, GREEN_ACTIVE
-  promotionStatus    String   @default("IN_PROGRESS") @map("promotion_status")    // IN_PROGRESS, PROMOTION_READY
-  primaryTherapistId String   @map("primary_therapist_id")
-  parentPhone        String?  @map("parent_phone")
-  chiefComplaint     String?  @map("chief_complaint")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-
-  triageReferrals    AssessmentTriageReferral[]
-  assessmentRecords  AssessmentRecord[]
-  iepPlans           IepPlan[]
-  trainingSessions   TrainingSession[]
-  homeworkCheckins   HomeworkCheckin[]
-
-  @@map("students")
-}
-
-model AssessmentTriageReferral {
-  id                String    @id @default(uuid())
-  studentId         String    @map("student_id")
-  behaviorItemsJson String    @map("behavior_items_json") // JSON数组字符串
-  redZoneItemsJson  String    @map("red_zone_items_json") // 命中的红区预警项JSON数组
-  isRedZone         Boolean   @default(false) @map("is_red_zone")
-  referralCode      String?   @map("referral_code")       // REF-20261012-08
-  hospitalName      String?   @map("hospital_name")
-  hospitalDiagnosis String?   @map("hospital_diagnosis")
-  receiptFileUrl    String?   @map("receipt_file_url")
-  auditStatus       String    @default("PENDING") @map("audit_status") // PENDING, APPROVED, REJECTED
-  auditedBy         String?   @map("audited_by")
-  auditedAt         DateTime? @map("audited_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-
-  student           Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@map("assessments_triage_referrals")
-}
-
-model AssessmentRecord {
-  id               String   @id @default(uuid())
-  studentId        String   @map("student_id")
-  evalPhase        String   @map("eval_phase") // BASELINE, STAGE_8W, TRANSITION
-  acuityLeft       String?  @map("acuity_left")
-  acuityRight      String?  @map("acuity_right")
-  refractionStatus String?  @map("refraction_status")
-  accomAmplitudeD  Float?   @map("accom_amplitude_d")
-  accomFacilityCpm Float?   @map("accom_facility_cpm")
-  npcCm            Float?   @map("npc_cm")
-  binocularTier    String?  @map("binocular_tier")
-  nsucoScoreJson   String?  @map("nsuco_score_json")
-  beeryVmiRaw      Int?     @map("beery_vmi_raw")
-  beeryVmiStd      Int?     @map("beery_vmi_std")
-  beeryVpStd       Int?     @map("beery_vp_std")
-  beeryMcStd       Int?     @map("beery_mc_std")
-  tvpsStd          Int?     @map("tvps_std")
-  tvpsSubtestsJson String?  @map("tvps_subtests_json")
-  demRatio         Float?   @map("dem_ratio")
-  radarSixDimsJson String   @map("radar_six_dims_json") // [L0,L1,L2,L3,L4,L5] 百分位数组JSON
-  recommendedLevel String   @map("recommended_level")
-  evaluatorId      String   @map("evaluator_id")
-  evalDate         DateTime @default(now()) @map("eval_date")
-
-  student          Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-
-  @@map("assessments_records")
-}
-
-model SopCard {
-  id              String @id @default(uuid())
-  cardCode        String @unique @map("card_code") // 操作卡 1-1 ~ 5-1
-  moduleCode      String @map("module_code")       // M1 ~ M5
-  targetLevel     String @map("target_level")      // L0 ~ L5
-  title           String
-  purpose         String
-  teachingAids    String @map("teaching_aids")
-  stepsJson       String @map("steps_json")
-  standardCue     String @map("standard_cue")
-  progressionPath String @map("progression_path")
-  safetyNotes     String @map("safety_notes")
-
-  @@map("sop_cards")
-}
-
-model IepPlan {
-  id                 String   @id @default(uuid())
-  studentId          String   @map("student_id")
-  targetLevel        String   @map("target_level")
-  longTermGoal       String   @map("long_term_goal")
-  shortTermGoalsJson String   @map("short_term_goals_json")
-  selectedSopIdsJson String   @map("selected_sop_ids_json")
-  weeklyFrequency    Int      @default(4) @map("weekly_frequency")
-  sessionDurationMin Int      @default(35) @map("session_duration_min")
-  digitalLimitMin    Int      @default(12) @map("digital_limit_min") // 强制 <= 15
-  reviewCycleWeeks   Int      @default(8) @map("review_cycle_weeks")
-  status             String   @default("ACTIVE")
-  createdAt          DateTime @default(now()) @map("created_at")
-
-  student            Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  sessions           TrainingSession[]
-
-  @@map("iep_plans")
-}
-
-model TrainingSession {
-  id                     String   @id @default(uuid())
-  studentId              String   @map("student_id")
-  iepId                  String?  @map("iep_id")
-  therapistId            String   @map("therapist_id")
-  roomName               String   @map("room_name")
-  sessionDate            DateTime @default(now()) @map("session_date")
-  totalDurationSec       Int      @map("total_duration_sec")
-  digitalDurationSec     Int      @default(0) @map("digital_duration_sec") // <= 900秒
-  coreSopCode            String   @map("core_sop_code")
-  trialsDetailJson       String   @map("trials_detail_json")               // 10回合明细JSON
-  accuracyRate           Float    @map("accuracy_rate")
-  promptLevel            String   @map("prompt_level")
-  gazeHeadBehavior       String?  @map("gaze_head_behavior")
-  moodReinforcer         String?  @map("mood_reinforcer")
-  eyeTrackingSummaryJson String?  @map("eye_tracking_summary_json")
-  assignedHomeworkTitle  String?  @map("assigned_homework_title")
-
-  student                Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  iepPlan                IepPlan? @relation(fields: [iepId], references: [id])
-  homeworkCheckins       HomeworkCheckin[]
-
-  @@map("training_sessions")
-}
-
-model HomeworkCheckin {
-  id             String           @id @default(uuid())
-  studentId      String           @map("student_id")
-  sessionId      String?          @map("session_id")
-  taskTitle      String           @map("task_title")
-  durationMin    Int              @default(8) @map("duration_min")
-  parentFeedback String?          @map("parent_feedback")
-  mediaUrlsJson  String?          @map("media_urls_json")
-  therapistReply String?          @map("therapist_reply")
-  flowerRewarded Boolean          @default(false) @map("flower_rewarded")
-  checkinDate    DateTime         @default(now()) @map("checkin_date")
-
-  videoCleanStatus  String           @default("ACTIVE") @map("video_clean_status") // ACTIVE, VIDEO_EXPIRED_CLEANED
-  scheduledDeleteAt DateTime?        @map("scheduled_delete_at")                   // 上传后 +7 天自动清理时间
-
-  student           Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  session           TrainingSession? @relation(fields: [sessionId], references: [id])
-
-  @@map("homework_checkins")
-}
-
-model AuditLog {
-  id                String   @id @default(uuid())
-  userId            String   @map("user_id")            // 如 therapist_zhou
-  userName          String   @map("user_name")          // 如 周敏
-  userRole          String   @map("user_role")          // OT / PT / OPTOMETRIST / TEACHER / ADMIN
-  action            String                              // CREATE_STUDENT, IMPORT_EXCEL, RED_ZONE_LOCK, UNLOCK_RED_ZONE, APPROVE_PROMOTION, CRON_CLEAN_VIDEOS
-  targetType        String   @map("target_type")        // student / assessment / iep / session / homework
-  targetId          String   @map("target_id")
-  changesBeforeJson String?  @map("changes_before_json") // 兼容 SQLite 与 PostgreSQL 的 JSON 字符串
-  changesAfterJson  String?  @map("changes_after_json")
-  ipAddress         String?  @map("ip_address")
-  createdAt         DateTime @default(now()) @map("created_at")
-
-  @@index([userId, createdAt])
-  @@index([targetId, action])
-  @@map("audit_logs")
-}
-```
+> **权威定义**：数据库 Schema 以仓库根目录 `prisma/schema.prisma` 为唯一事实源。本文件不再重复内嵌 Schema；字段名、关系、索引与 JSON 序列化约束一律以该文件为准。
+>
+> 当前 8 张表：`Student` / `AssessmentTriageReferral` / `AssessmentRecord` / `SopCard` / `IepPlan` / `TrainingSession` / `HomeworkCheckin` / `AuditLog`。
+> 切换 SQLite / PostgreSQL 时，只改该文件的 `provider` 与 `DATABASE_URL`；Docker 构建通过 `scripts/prepare-schema.mjs` 生成 PostgreSQL 副本，不在仓库维护第二份 Schema。
 
 ### 5. 核心 API 与双屏 WebSocket 接口契约
 
@@ -469,69 +286,24 @@ model AuditLog {
 
 客户无需安装 PostgreSQL 或 Docker，解压交付包后双击即可运行：
 
-```
-@echo off
-chcp 65001 >nul
-title 星眸智康 VMI-TIS 数字化康复系统 (单机免安装版)
-echo ===================================================
-echo   正在启动 星眸智康 VMI-TIS 视觉运动整合训练系统...
-echo   数据库模式: 本地免安装 SQLite (./data/vmi_tis.db)
-echo ===================================================
-set DATABASE_URL=file:./data/vmi_tis.db
-set PORT=3000
+已实现文件：`deploy/start_standalone.bat`（配套 `deploy/run_api.bat`）。关键行为：
 
-if not exist "./data/vmi_tis.db" (
-  echo [初始化] 首次运行，正在自动创建康复数据库并导入13张标准操作卡...
-  call npx prisma db push --skip-generate
-  call npx tsx prisma/seed.ts
-)
-
-start "" "http://localhost:3000"
-node dist/main.js
-pause
-```
+- 检查 Node.js 与 3000 端口占用；
+- 首次运行自动安装依赖并构建后端；
+- 执行 `prisma db push` 建库，再用 `npm run db:seed` 导入 13 张操作卡与 6 名学生；
+- 后端健康检查通过后打开 `http://localhost:3000`；
+- 退出主窗口时停止 API 进程。
 
 #### 6.2 方案 B：医院/多科室联网版 Docker 一键部署编排（`deploy/docker-compose.yml`，基于 PostgreSQL）
 
 医院信息科只需执行 `docker compose up -d`，即可在 1 分钟内自动完成 PostgreSQL 15 安装、建表、种子数据初始化与 Web 服务启动：
 
-```
-version: '3.8'
-services:
-  vmi-postgres:
-    image: postgres:15-alpine
-    container_name: vmi-tis-postgres
-    restart: always
-    environment:
-      POSTGRES_USER: vmi_admin
-      POSTGRES_PASSWORD: VmiTis2026_SecurePassword
-      POSTGRES_DB: vmi_tis_db
-    volumes:
-      - ./pg_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U vmi_admin -d vmi_tis_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+已实现文件：`deploy/docker-compose.yml`（配套 `apps/api/Dockerfile`）。关键行为：
 
-  vmi-server:
-    build: ..
-    container_name: vmi-tis-server
-    restart: always
-    depends_on:
-      vmi-postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: "postgresql://vmi_admin:VmiTis2026_SecurePassword@vmi-postgres:5432/vmi_tis_db?schema=public"
-      PORT: 3000
-    volumes:
-      - ./uploads:/app/uploads
-    ports:
-      - "3000:3000"
-    command: sh -c "npx prisma migrate deploy && npx tsx prisma/seed.ts && node dist/main.js"
-```
+- PostgreSQL 15 与 API 双服务，数据库健康检查通过后启动 API；
+- 构建期由 `scripts/prepare-schema.mjs --target postgresql` 生成 PostgreSQL 版 Schema，仓库不维护第二份 Schema；
+- 启动时执行 `prisma db push` 与 Seed，再启动 API；
+- API 暴露 3000 端口，数据持久化到 `pgdata` 卷。
 
 ### 7. 多模型协同研发流水线（Claude Opus 总体规划 → DeepSeek 编码实施 → ChatGPT 审查把关）
 

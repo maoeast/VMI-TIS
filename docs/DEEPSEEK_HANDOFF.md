@@ -22,15 +22,15 @@
 ## 二、基准文件（执行前必读）
 
 ### 2.1 契约文件（Claude Opus 已生成）
-1. **`prisma/schema.prisma`** - 8 张表完整数据库 Schema（10,373 字符）
+1. **`prisma/schema.prisma`** - 8 张表完整数据库 Schema（10,360 字符）
    - 默认 SQLite 免安装模式（`provider = "sqlite"`）
    - 所有数组/对象统一用 `JSON.stringify()` 序列化为 `String`
    - 严禁使用 `String[]` 标量数组或 `@db.Timestamptz`
 
 2. **`packages/shared-types/src/index.ts`** - 前后端共享类型契约（10,353 字符）
-   - 15 个枚举类型（StudentTriageStatus / CapabilityLevel / PromotionStatus 等）
+   - 12 个枚举类型（StudentTriageStatus / CapabilityLevel / PromotionStatus 等）
    - 8 个数据库实体接口（与 Prisma Model 1:1 映射）
-   - 12 个 API DTO（CreateStudentDto / SubmitTriageDto 等）
+   - 10 个 API DTO（CreateStudentDto / SubmitTriageDto 等）
    - 3 个 WebSocket 事件负载（双屏同步）
 
 3. **`docs/IMPLEMENTATION_TASKS.md`** - 6 张原子级任务卡（28,652 字符）
@@ -42,13 +42,13 @@
    - Task 6: WebSocket 双屏同步 + Android 打包
 
 ### 2.2 需求规格文档
-1. **`docs/vmi_tis.md`** - 完整需求规格说明书 V2.1（635 行）
-   - 第 4.1 节：Prisma Schema 完整定义（L228-412）
-   - 第 5 节：12 条 RESTful API 规格（L419-432）
-   - 第 6 节：双模部署脚本（L468-534）
-   - 第 7.1.1 节：**【3055 行原型真实 DOM 与 JS 函数行号索引表】**（L548-563）
+1. **`docs/vmi_tis.md`** - 完整需求规格说明书 V2.1（424 行）
+   - 第 4.1 节：数据库 Schema 权威指向（L223-230，唯一事实源为 `prisma/schema.prisma`）
+   - 第 5 节：12 条 RESTful API 规格（L232-249）
+   - 第 6 节：双模部署脚本（L285-305）
+   - 第 7.1.1 节：**【3076 行原型真实 DOM 与 JS 函数行号索引表】**（L320-335）
 
-2. **`docs/vmi_tis_prototype.html`** - 3055 行完整三端交互原型
+2. **`docs/vmi_tis_prototype.html`** - 3076 行完整三端交互原型
    - 终端一：教师 Web 工作台（9 个页面，L115-1543）
    - 终端二：学生 Pad 端（4 款 Canvas 游戏，L2590-2788）
    - 终端三：家长小程序（4 个 Tab 页，L1864-2174）
@@ -142,48 +142,40 @@ createdAt: DateTime @db.Timestamptz // PostgreSQL 专有语法
 
 **执行步骤：**
 ```bash
-# 1. 初始化工程
-mkdir -p apps/api/src/{prisma,config,students,assessments,iep,sessions,websocket,common}
-mkdir -p packages/shared-types/src
-mkdir -p deploy
+# 1. 安装 workspace 依赖（在仓库根目录执行）
+npm install
 
-# 2. 安装依赖
-cd apps/api
-npm init -y
-npm install @nestjs/core @nestjs/common @nestjs/platform-express
-npm install @prisma/client prisma
-npm install --save-dev @types/node typescript ts-node
+# 2. 生成 Prisma Client（SQLite 默认）
+npm run db:generate
 
-# 3. 复制契约文件
-cp ../../prisma/schema.prisma ./prisma/
-cp ../../packages/shared-types/src/index.ts ./src/shared-types.ts
+# 3. 建库并导入演示数据
+npm run db:push
+npm run db:seed
+npm run db:verify
 
-# 4. 生成 Prisma Client
-npx prisma generate
-
-# 5. 推送数据库 Schema（SQLite 模式）
-export DATABASE_URL="file:./data/vmi_tis.db"
-npx prisma db push
+# 4. 构建并启动
+npm run build
+npm run start
 ```
 
 **核心文件产出：**
 1. `apps/api/src/main.ts` - NestJS 启动入口
 2. `apps/api/src/app.module.ts` - 根模块
 3. `apps/api/src/prisma/prisma.service.ts` - PrismaClient 单例
-4. `apps/api/prisma/seed.ts` - Seed 脚本（完整代码见 IMPLEMENTATION_TASKS.md Task 1.1）
+4. `apps/api/src/prisma/seed.ts` - Seed 脚本（完整代码见 IMPLEMENTATION_TASKS.md Task 1.1）
 5. `deploy/start_standalone.bat` - Windows 单机版启动脚本
 6. `deploy/docker-compose.yml` - PostgreSQL 服务器版
 
 **验收标准：**
 ```bash
-# 检查数据库文件生成
-ls ./data/vmi_tis.db
+# 检查数据库文件生成（在仓库根目录执行）
+ls apps/api/data/vmi_tis.db
 
-# 执行 Seed 脚本
-npx prisma db seed
+# 验证 Seed 数据
+npm run db:verify
 
-# 验证数据导入
-npx prisma studio  # 浏览器打开后检查 sop_cards 表是否有 13 条记录
+# 可选：可视化检查
+npx prisma studio --schema prisma/schema.prisma
 ```
 
 ---
@@ -293,7 +285,7 @@ curl -X POST http://localhost:3000/api/sessions/:id/finish
 
 ### Week 5: Task 5 - React 工程化（2 天）
 
-**目标：** 将原型 HTML 的 3055 行 JavaScript 逻辑迁移到 React 18 + TypeScript + Vite 工程。
+**目标：** 将原型 HTML 的 3076 行 JavaScript 逻辑迁移到 React 18 + TypeScript + Vite 工程。
 
 **执行步骤：**
 ```bash
@@ -437,7 +429,7 @@ materialsJson: string
 
 ### Q2: 原型 HTML 行号找不到对应函数
 ```bash
-# 原型行号索引表位置：docs/vmi_tis.md L548-563
+# 原型行号索引表位置：docs/vmi_tis.md L320-335
 # 示例：
 # - 三终端切换逻辑：switchTerminal() @ L2176-2191
 # - 学生切换逻辑：changeActiveStudent() @ L2193-2206

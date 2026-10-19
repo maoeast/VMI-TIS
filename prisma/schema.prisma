@@ -107,7 +107,6 @@ model SopCard {
   cueTextJson        String?  @map("cue_text_json")         // TTS语音提示词JSON数组
   createdAt          DateTime @default(now()) @map("created_at")
 
-  iepPlans           IepPlan[]
   trainingSessions   TrainingSession[]
 
   @@map("sop_cards")
@@ -132,7 +131,8 @@ model IepPlan {
   updatedAt           DateTime @updatedAt @map("updated_at")
 
   student             Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  sopCards            SopCard  @relation(fields: [selectedCardsJson], references: [cardCode])
+  // selectedCardsJson 是 JSON 数组字符串（如 ["M2-3-1","M2-3-2"]），不是外键；
+  // 卡片与课次的真实关联由 TrainingSession.sopCardId 承担。
 
   @@index([studentId, status])
   @@map("iep_plans")

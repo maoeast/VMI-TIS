@@ -27,27 +27,27 @@
 ## 二、审查基准文件（必读）
 
 ### 2.1 契约文件（Claude Opus 已生成）
-1. **`prisma/schema.prisma`**（10,373 字符）
+1. **`prisma/schema.prisma`**（10,360 字符）
    - 8 张表完整定义
    - SQLite/PostgreSQL 双模兼容设计
    - 严禁使用 `String[]` 标量数组或 `@db.Timestamptz`
 
 2. **`packages/shared-types/src/index.ts`**（10,353 字符）
-   - 15 个枚举类型（StudentTriageStatus / CapabilityLevel / PromptLevel 等）
+   - 12 个枚举类型（StudentTriageStatus / CapabilityLevel / PromptLevel 等）
    - 8 个数据库实体接口
-   - 12 个 API DTO
+   - 10 个 API DTO
 
 3. **`docs/IMPLEMENTATION_TASKS.md`**（28,652 字符）
    - 6 张原子级任务卡
    - 每张任务卡末尾附带验收标准
 
 ### 2.2 需求规格文档
-1. **`docs/vmi_tis.md`**（需求规格说明书 V2.1，635 行）
+1. **`docs/vmi_tis.md`**（需求规格说明书 V2.1，424 行）
    - 第 191-219 行：四大强制规则（R1-R4）
-   - 第 228-412 行：Prisma Schema 完整定义
-   - 第 548-563 行：原型真实 DOM 与 JS 函数行号索引表
+   - 第 223-230 行：数据库 Schema 权威指向（唯一事实源为 `prisma/schema.prisma`）
+   - 第 320-335 行：原型真实 DOM 与 JS 函数行号索引表
 
-2. **`docs/vmi_tis_prototype.html`**（完整原型，3055 行）
+2. **`docs/vmi_tis_prototype.html`**（完整原型，3076 行）
    - 视觉还原基准：所有 UI 必须与此保持一致
 
 ---
@@ -67,17 +67,17 @@ ls ./data/vmi_tis.db
 # 预期：文件存在
 
 # 2. Prisma Studio 显示 13 张操作卡
-npx prisma studio
+npx prisma studio --schema ../../prisma/schema.prisma
 # 预期：sop_cards 表有 13 条记录，字段名与 schema.prisma 完全匹配
 
 # 3. Prisma Studio 显示 6 名示例学生
 # 预期：students 表有 6 条记录，包含：
 # - 林小宇（L2，PROMOTION_READY）
 # - 陈果果（L1，GREEN_ACTIVE）
-# - 张梓轩（L0，RED_ZONE_LOCKED）
-# - 李思涵（L3，GREEN_ACTIVE）
-# - 王浩宇（L2，GREEN_ACTIVE）
-# - 赵欣怡（L4，GREEN_ACTIVE）
+# - 张梓轩（L1，RED_ZONE_LOCKED）
+# - 王梓涵（L0，GREEN_ACTIVE）
+# - 刘诺一（L3，PROMOTION_READY）
+# - 周子墨（L4，GREEN_ACTIVE）
 
 # 4. start_standalone.bat 脚本存在
 cat ../../deploy/start_standalone.bat | grep "星眸智康"
@@ -88,22 +88,22 @@ cat ../../deploy/docker-compose.yml | grep "postgres"
 # 预期：包含 PostgreSQL 15 服务定义
 
 # 6. Seed 脚本数据源正确性检查
-# 打开 apps/api/prisma/seed.ts
-# 检查操作卡数据是否从原型 L1671-1849 提取
-# 检查学生数据是否从原型 L1784-1849 提取
+# 打开 apps/api/src/prisma/seed.ts
+# 检查操作卡数据是否从原型 L1847-1861 提取
+# 检查学生数据是否从原型 L1741-1844 提取
 
 # 7. JSON 序列化正确性
-npx prisma studio
+npx prisma studio --schema ../../prisma/schema.prisma
 # 选择 sop_cards 表中的任意一条记录
 # 检查 materialsJson 字段是否为 JSON 字符串格式
 # 例如："[\"镊子\",\"珠子\"]"（不是数组类型）
 
 # 8. 文件顶部注释完整性
-head -5 apps/api/prisma/seed.ts
+head -5 apps/api/src/prisma/seed.ts
 # 预期：包含来源注释，例如：
 # /**
 #  * VMI-TIS 系统 Seed 脚本
-#  * 数据源：vmi_tis_prototype.html L1671-1849
+#  * 数据源：vmi_tis_prototype.html L1847-1861
 #  */
 ```
 
@@ -121,16 +121,16 @@ head -5 apps/api/prisma/seed.ts
 1. ❌ `sop_cards` 表中 `materialsJson` 字段存储为数组类型，而非 JSON 字符串
    - 期望：`"[\"镊子\",\"珠子\"]"`（String 类型）
    - 实际：`["镊子", "珠子"]`（Array 类型）
-   - 违反契约：`prisma/schema.prisma` L105 定义为 `String`
+   - 违反契约：`prisma/schema.prisma` L102 定义为 `String`
 
 2. ❌ 学生"张梓轩"状态应为 `RED_ZONE_LOCKED`，实际为 `GREEN_ACTIVE`
-   - 依据：原型 L1792 定义其为红区示例学生
+   - 依据：原型 L1776-1792（张梓轩条目）定义其为红区示例学生
 
 修复指令：
-1. 打开 `apps/api/prisma/seed.ts`
+1. 打开 `apps/api/src/prisma/seed.ts`
 2. 修改第 X 行：`materialsJson: ['镊子', '珠子']` → `materialsJson: JSON.stringify(['镊子', '珠子'])`
 3. 修改第 Y 行：`triageStatus: 'GREEN_ACTIVE'` → `triageStatus: 'RED_ZONE_LOCKED'`
-4. 重新执行：`npx prisma db push --force-reset && npx prisma db seed`
+4. 重新执行：`npm run db:push -- --force-reset && npm run db:seed`
 5. 重新验收
 
 预计修复时间：30 分钟
