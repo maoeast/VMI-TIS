@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { DigitalLimitGuard } from '../common/guards/digital-limit.guard';
 import { DigitalDurationDto } from './dto/digital-duration.dto';
+import { DigitalResetDto } from './dto/digital-reset.dto';
 import { FinishSessionDto } from './dto/finish-session.dto';
 import { RecordTrialDto } from './dto/record-trial.dto';
 import { StartSessionDto } from './dto/start-session.dto';
@@ -64,6 +65,14 @@ export class SessionsController {
   @UseGuards(DigitalLimitGuard)
   digitalStart(@Param('id', new ParseUUIDPipe()) id: string) {
     return this.sessionsService.digitalStart(id);
+  }
+
+  @Post(':id/digital-reset')
+  resetDigitalLimit(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: DigitalResetDto,
+  ) {
+    return this.sessionsService.resetDigitalLimit(id, dto.authorizedBy);
   }
 
   @Post(':id/finish')

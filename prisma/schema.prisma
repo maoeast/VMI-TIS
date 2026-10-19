@@ -167,6 +167,7 @@ model HomeworkCheckin {
   id                  String    @id @default(uuid())
   studentId           String    @map("student_id")
   taskName            String    @map("task_name")             // 找袜子泛化 / 聚散球练习
+  durationMin         Int       @default(10) @map("duration_min") // 建议练习时长（分钟）
   assignedDate        DateTime  @map("assigned_date")
   dueDate             DateTime  @map("due_date")
   status              String    @default("PENDING") @map("status") // PENDING, COMPLETED, OVERDUE

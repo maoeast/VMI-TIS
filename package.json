@@ -12,9 +12,10 @@
     "db:push": "npm run db:push -w @vmi-tis/api",
     "db:seed": "npm run db:seed -w @vmi-tis/api",
     "db:verify": "npm run db:verify -w @vmi-tis/api",
-    "build": "npm run build -w @vmi-tis/shared-types && npm run build -w @vmi-tis/api",
+    "build": "npm run build -w @vmi-tis/shared-types && npm run build -w @vmi-tis/api && npm run build -w @vmi-tis/web",
     "start": "npm run start:prod -w @vmi-tis/api",
     "start:dev": "npm run start:dev -w @vmi-tis/api",
+    "dev:web": "npm run dev -w @vmi-tis/web",
     "verify:task1": "npm run db:verify -w @vmi-tis/api"
   },
   "engines": {

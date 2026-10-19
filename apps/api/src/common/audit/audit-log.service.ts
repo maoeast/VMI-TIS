@@ -7,6 +7,7 @@ import {
   UserRole,
 } from '@vmi-tis/shared-types';
 import { PrismaService } from '../../prisma/prisma.service';
+import { getAuditActor } from './audit-context';
 
 export interface AuditActor {
   userId: string;
@@ -66,7 +67,11 @@ export class AuditLogService {
   constructor(private readonly prisma: PrismaService) {}
 
   async log(entry: AuditEntry): Promise<void> {
-    const actor: AuditActor = { ...DEFAULT_ACTOR, ...entry.actor };
+    const actor: AuditActor = {
+      ...DEFAULT_ACTOR,
+      ...(getAuditActor() ?? {}),
+      ...entry.actor,
+    };
 
     await this.prisma.auditLog.create({
       data: {

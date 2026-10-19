@@ -126,7 +126,7 @@
       - `@capacitor/status-bar` & 全屏沉浸模式（隐藏 Android 顶部状态栏与底部虚拟按键，防止孤独症儿童误触退出）；
       - `@capacitor-community/text-to-speech`（调用 Android 本地离线中文语音引擎播报标准指导语，无需外网）；
       - `@capacitor/camera` & `@capacitor/filesystem`（康复师使用 Android 平板直接拍照上传眼科转介回执或录制学生训练过程）。
-   - **家长端微信小程序**：`Taro 3.x (React + TypeScript)` 或响应式移动 H5，与工作台共享 `packages/shared-types`。
+   - **家长端**：当前实现为响应式移动 H5（与工作台同属 `apps/web`），与工作台共享 `packages/shared-types`；后续可替换为 Taro 小程序。
 - **后端技术栈**：
    - `Node.js 20 LTS + NestJS + TypeScript`（或 `Express/Fastify + TypeScript`），内置 RESTful API、`Socket.io` 双屏实时同步服务以及静态资源托管（生产环境下由后端直接托管前端 `dist` 目录与上传文件，减少 Nginx 配置复杂度）。
 - **数据库双模自适应架构（Prisma ORM：SQLite 零安装单机版 ↔ PostgreSQL 医院集群版）**：
@@ -137,46 +137,46 @@
 ```
 vmi-tis-platform/
 ├── apps/
-│   ├── client-app/                 # 终端一 & 终端二合一跨端工程 (React 18 + Vite + Tailwind + Capacitor)
+│   ├── api/                         # 后端：NestJS 10 + Prisma 5 + Socket.io
 │   │   ├── src/
-│   │   │   ├── views/workbench/    # 机构/教师端 8 大功能模块视图 (自适应 PC 大屏与康复师 Android 平板)
-│   │   │   ├── views/student-pad/  # 学生端全屏互动训练与眼动校准视图 (专机 Kiosk 护眼模式)
-│   │   │   ├── services/eyetrack/  # 双模眼动适配器 (Windows USB 60Hz WebSocket 驱动 + Android 前置摄像头/触控驱动)
-│   │   │   └── store/              # Zustand 状态仓库 (支持离线队列同步)
-│   │   ├── android/                # Capacitor 自动生成的原生 Android Studio 工程 (直接构建 .apk)
-│   │   └── capacitor.config.ts     # Android 包名、全屏沉浸式与硬件权限配置
-│   └── parent-miniprogram/         # 终端三：星眸家校桥家长端微信小程序 / H5 (Taro React)
-├── services/
-│   ├── api-server/                 # 核心业务后端 (NestJS + Socket.io + Prisma Client)
-│   │   ├── src/modules/
-│   │   │   ├── auth/               # 多角色 RBAC 鉴权 (视光师/OT/PT/特教教师/主任/家长)
-│   │   │   ├── students/           # 学生档案与红绿区分流状态机
-│   │   │   ├── assessments/        # 四层评估、常模换算引擎与眼科转介核验
-│   │   │   ├── iep-schedules/      # 智能 IEP 生成、晋级规则引擎与功能室排课
-│   │   │   ├── sessions/           # 30-40分钟五段式课堂工作台与回合记分 (WebSocket双屏同步)
-│   │   │   ├── eye-tracking/       # 60Hz 眼动数据流接收、增益计算与热力图生成
-│   │   │   ├── homeschool/         # 家庭泛化任务派发、视频打卡与多学科沟通群
-│   │   │   └── sop-library/        # 五大模块操作卡与13类实体教具资源库
-│   └── eyetracker-bridge/          # Windows 一体机本地非接触式红外眼动仪 C++/Python 桥接服务 (ws://127.0.0.1:9800)
+│   │   │   ├── students/            # 学生档案、筛选、Excel/CSV 批量导入
+│   │   │   ├── assessments/         # 四层评估、R1 红区、R2 中止、L0–L5 定级、报告
+│   │   │   ├── iep/                 # IEP 计划与 R3 晋级复核
+│   │   │   ├── sessions/            # 五段式课堂、回合记分、R4 护眼锁
+│   │   │   ├── schedules/           # 排课前置校验
+│   │   │   ├── sop-cards/           # 13 张标准化操作卡
+│   │   │   ├── workbench/           # 工作台汇总
+│   │   │   ├── homework/            # 家庭作业与 7 天过期视频清理
+│   │   │   ├── analytics/           # 数据画像
+│   │   │   ├── gateway/             # Socket.io 双屏通道
+│   │   │   └── common/              # 审计、异常过滤器、守卫、装饰器
+│   │   └── data/                    # SQLite 数据库、报告与上传文件（运行时生成）
+│   └── web/                         # 三端合一：React 18 + Vite 5 + Tailwind + Zustand
+│       ├── src/pages/web/           # 教师端 9 页
+│       ├── src/pages/student/       # 学生 Pad 4 款 Canvas 游戏 + 护眼遮罩
+│       ├── src/pages/parent/        # 家长端 4 个 Tab（响应式 H5）
+│       ├── src/components/          # Header / Sidebar / Toast / TrialBox
+│       ├── src/hooks/               # useKeyboardShortcuts / useWebSocket
+│       ├── android/                 # Capacitor 6 生成的 Android 工程
+│       └── capacitor.config.ts      # 包名 com.vmitis.pad
 ├── packages/
-│   └── shared-types/               # 前后端共享 TypeScript 接口、枚举与常模计算工具
+│   └── shared-types/                # 前后端共享枚举、实体接口与 DTO
 ├── prisma/
-│   ├── schema.prisma               # 兼容 SQLite 与 PostgreSQL 的统一数据模型
-│   └── seed.ts                     # 初始种子脚本 (内置13张操作卡、常模表与6名示范学生档案)
-├── deploy/
-│   ├── docker-compose.yml          # 医院服务器版：PostgreSQL + API + Web 一键容器编排
-│   ├── start_standalone.bat        # 学校单机版：免安装 SQLite 一键启动脚本 (Windows)
-│   └── install_hospital_server.bat # 医院服务器版：Docker 环境一键部署脚本
-└── vmi_tis_prototype.html          # 1:1 视觉与交互参考基准原型
+│   └── schema.prisma                # 唯一 Schema（SQLite/PostgreSQL 双模）
+├── scripts/                         # prepare-schema / generate-client / verify-taskN
+├── deploy/                          # 单机 bat 与 Docker 编排
+└── docs/                            # 设计文档、任务卡与进度日志
 ```
+
+> **实现落点（2026-10-19）**：三端合一是 `apps/web` 的路由级终端（`/web`、`/student`、`/parent`）；家长端当前为响应式 H5，未使用 Taro 小程序；眼动仪硬件桥接（`services/eyetracker-bridge`）与多角色 RBAC 登录尚未实现，单机版用 `x-user-*` 请求头标识操作者。API 直接托管 `apps/web/dist`，浏览器打开 `http://localhost:3000` 即可使用。
 
 ### 2. Android 平板适配与硬件外设桥接规范（Android & Hardware Adaptation）
 
-在开发 `apps/client-app` 时，必须实现以下跨端适配逻辑：
+在开发 `apps/web` 时，按以下跨端规范实现；当前已落地 `capacitor.config.ts`（`appId` / `appName` / `webDir` / `androidScheme`）与 `android/` 工程，Kiosk 全屏、局域网扫码配网、IndexedDB 离线队列与眼动仪硬件桥接为后续增强项。
 
 1. **Capacitor Android 全屏防误触配置（`capacitor.config.ts`）**：
-   - `appId`: `"com.xingmou.vmitis"`，`appName`: `"星眸智康VMI"`。
-   - 当路由进入 `/student-pad`（学生训练端）时，自动调用 Android Immersive Sticky 全屏模式，隐藏系统状态栏与底部导航条；退出学生端返回教师工作台时，需验证教师手势或四位口令（如长按右上角 3 秒或输入 `0808`），防止孤独症学生在训练中自行切出桌面。
+   - `appId`: `"com.vmitis.pad"`，`appName`: `"星眸智康 Pad"`。
+   - 当路由进入 `/student`（学生训练端）时，自动调用 Android Immersive Sticky 全屏模式，隐藏系统状态栏与底部导航条；退出学生端返回教师工作台时，需验证教师手势或四位口令（如长按右上角 3 秒或输入 `0808`），防止孤独症学生在训练中自行切出桌面。
 2. **局域网服务器发现与离线容灾**：
    - Android 平板端登录页右上角提供【服务器连接设置】弹窗，支持输入机构内网主机 IP（如 `http://192.168.1.100:3000`）或扫描教师 PC 端工作台生成的二维码一键配网绑定。
    - 在感统运动室等 Wi-Fi 信号薄弱区域，康复师平板在 `SessionWorkbench` 录入的 10 回合记分优先写入本地 `IndexedDB` 队列，网络恢复后自动静默同步至后端。
@@ -235,22 +235,48 @@ vmi-tis-platform/
 
 | 方法与路由路径 | 功能说明 | 关键请求参数 / 业务逻辑校验 |
 | --- | --- | --- |
-| `GET /api/workbench/summary` | 获取工作台首页数据 | 返回今日排课列表、3类智能预警待办（晋级/红区回执/复评）、L0–L5在训分布 |
-| `POST /api/students` | 新生入案建档 | 创建学生档案，默认状态 `PENDING_SCREENING`，自动生成唯一学号 |
-| `POST /api/assessments/triage` | 提交初筛与红区核查 | 若 `redZoneItems.length > 0`，自动将学生状态置为 `RED_ZONE_LOCKED` 并生成转介单号 |
-| `POST /api/assessments/referral-audit` | 审核眼科专科回执 | 视光师审核通过后将学生 `triageStatus` 更新为 `GREEN_ACTIVE` |
-| `POST /api/assessments/scale-score` | 提交电子量表逐题判分 | 实时检测连续 3 题 0 分中止规则，计算标准分、百分位与六维雷达数组 |
-| `POST /api/iep-plans` | 保存并发布 IEP 计划 | 校验 `digitalLimitMin <= 15`，同步生成周课表排课记录 |
-| `POST /api/sessions/:id/trial` | 课堂实时录入单回合记分 | 追加回合结果（`pass`, `promptLevel`），实时重算当堂正确率并广播至前端 |
-| `POST /api/sessions/:id/finish` | 课堂结课归档与派发作业 | 校验连续 3 次课 `accuracyRate >= 80%` 晋级逻辑，同时向家长小程序创建今日打卡任务 |
-| `POST /api/students/import-excel` | Excel/CSV 批量导入学生档案 | 使用 `SheetJS` 解析上传表格，批量创建学生档案并写入 `AuditLog` |
-| `POST /api/mp/checkins` | 家长小程序提交每日打卡 | 更新连续打卡天数，自动设置 `scheduledDeleteAt = now + 7d` |
-| `DELETE /api/mp/checkins/expired-videos` | 清理 7 天前过期打卡视频 | 每日凌晨 `02:00` Cron 定时触发或管理员手动触发，释放磁盘并保留文字记录 |
-| `GET /api/audit-logs` | 查询医疗合规操作审计日志 | 支持按操作人、动作类型（如红区锁定/解锁、晋级审批）与时间范围过滤 |
+| `GET /api/health` | 健康检查 | 返回服务名、数据库模式与运行时长 |
+| `GET /api/workbench/summary` | 工作台首页数据 | 今日课表、活跃学生、待晋级、待审核转介、L0–L5 分布 |
+| `GET /api/students` | 学生列表与筛选 | `level` / `triageStatus` / `keyword` / 分页 |
+| `POST /api/students` | 新生入案建档 | 默认 `PENDING_SCREENING`，自动生成 `VMI-<年份><序号>` 学号 |
+| `GET/PATCH/DELETE /api/students/:id` | 学生详情 / 更新 / 删除 | 详情含转介、评估、IEP、课次、家庭作业 |
+| `POST /api/students/import-excel` | Excel/CSV 批量导入 | `ExcelJS` 解析；失败行返回 `errors`；单次 50 行 < 5 秒 |
+| `POST /api/assessments/triage` | 初筛与红区核查 | 服务端按关键字与阈值重算，命中即 `RED_ZONE_LOCKED` 并生成转介单 |
+| `POST /api/assessments/referral-upload` | 上传眼科回执 | 状态 → `REFERRAL_UPLOADED` |
+| `POST /api/assessments/referral-audit` | 审核回执 | `APPROVED` → `GREEN_ACTIVE`；`REJECTED` → `RED_ZONE_LOCKED` |
+| `GET /api/assessments/referrals/:studentId` | 转介列表 | 按学生返回转介单与审核状态 |
+| `POST /api/assessments/scale-score` | 逐题判分 | R2：连续 3 题 0 分返回 `shouldTerminate=true`；`reset` 重置会话 |
+| `POST /api/assessments/records` | 保存评估记录 | 写入六类指标、NSUCO、六维雷达；L0–L5 自动定级并回写学生层级 |
+| `GET /api/assessments/:studentId/records` | 评估记录分组 | 按 `BASELINE` / `STAGE_8W` / `TRANSITION` 分组 |
+| `POST /api/assessments/:id/generate-report` | 生成评估报告 | 当前输出 HTML 报告并返回 `/api/reports/<id>.html` |
+| `POST /api/iep-plans` | 创建 IEP | 校验数字上限 0–15 分钟；`selectedCards` / `weeklySchedule` 序列化为 JSON |
+| `GET/PATCH /api/iep-plans` | 查询 / 更新 IEP | 支持按学生过滤、审核人与状态更新 |
+| `POST /api/iep-plans/:id/approve` | 审核 IEP | 写入 `approvedBy` / `approvedAt` |
+| `GET /api/promotions/:studentId/check` | 晋级条件检查 | R3：最近 3 次课 ≥80%、跨 ≥2 种材料、≥1 次家庭打卡 |
+| `POST /api/promotions/:studentId/approve` | 晋级审批 | 层级 +1，`promotionStatus` 回到 `IN_PROGRESS` |
+| `POST /api/sessions` | 开始训练课 | 自动匹配当前层级操作卡；无 L4 专属卡时向下取 L3 |
+| `GET /api/sessions` / `GET /api/sessions/:id` | 课次列表 / 详情 | 含学生、操作卡、回合 JSON |
+| `PATCH /api/sessions/:id/stage` | 五段式环节切换 | 广播 `SESSION_STAGE_CHANGED` |
+| `POST /api/sessions/:id/trial` | 单回合记分 | 追加 `pass/fail`、提示层级、材料与时长；实时重算正确率 |
+| `POST /api/sessions/:id/digital` | 数字时长同步 | 返回累计秒数与剩余额度 |
+| `POST /api/sessions/:id/digital-start` | 数字训练前置校验 | R4：≥900 秒返回 403 + `remainingQuotaSec=0` |
+| `POST /api/sessions/:id/digital-reset` | 教师授权解锁 | 重置数字时长并记录审计 |
+| `POST /api/sessions/:id/finish` | 结课与晋级检查 | 返回结课记录与 R3 检查结果 |
+| `POST /api/schedules` | 排课前置校验 | 红区学生返回 403 `RED_ZONE_LOCKED`；绿区返回 IEP 周课表检查 |
+| `GET /api/sop-cards` | 操作卡库 | 支持层级、模块、关键词筛选 |
+| `GET /api/sop-cards/code/:cardCode` | 按编码取卡 | 返回单张操作卡 |
+| `GET/POST /api/homework-checkins` | 家庭作业列表 / 布置 | 默认 `PENDING`，建议时长 `durationMin` |
+| `POST /api/homework-checkins/:id/checkin` | 家长打卡 | 状态 → `COMPLETED`，设置 `scheduledDeleteAt = now + 7d` |
+| `POST /api/homework-checkins/:id/reply` | 教师点评 | 写入 `teacherReply` / `repliedAt` |
+| `POST /api/homework-checkins/:id/parent-message` | 家长留言 | 写入 `parentNote` |
+| `POST /api/homework-checkins/clean-expired-videos` | 清理过期视频 | 删除本地文件并标记 `videoDeletedAt`，保留文字 |
+| `GET /api/analytics/overview` | 数据总览 | 学生数、课次、平均正确率、层级/分流分布、最近课次 |
+| `GET /api/analytics/student/:id` | 学生画像 | 六维雷达、正确率趋势、数字时长趋势、定级历史 |
+| `GET /api/audit-logs` | 审计日志 | 按动作 / 目标类型 / 目标 ID / 分页过滤 |
 
 #### 5.2 双屏协同与眼动仪 60Hz WebSocket 协议
 
-1. **教师端与学生端（一体机 / Android Pad）双屏同步频道（`/ws/classroom-sync`，含医院内网 Polling 降级保底）**：
+1. **教师端与学生端（一体机 / Android Pad）双屏同步频道（Socket.io 默认路径 `/socket.io`，含医院内网 Polling 降级保底）**：
    - **传输降级配置（应对医院内网防火墙拦截 WebSocket）**：服务端与客户端 `Socket.io` 必须显式配置 `transports: ['websocket', 'polling']`，优先使用低延迟 WebSocket，当遇到医院内网代理或防火墙阻断 Upgrade 握手时，自动无缝降级为 HTTP Long-Polling，确保投屏控制 100% 可达。
    - 教师端点击“投屏学生端”或切换课堂环节时发送：
 
@@ -270,7 +296,7 @@ vmi-tis-platform/
         "event": "PAD_TRIAL_COMPLETED",
         "studentId": "stu1",
         "gameMode": "bubble",
-        "accuracyRate": 88.5,
+        "accuracyRate": 0.88,
         "avgReactionTimeMs": 640,
         "smoothPursuitGain": 0.89
       }
@@ -289,9 +315,9 @@ vmi-tis-platform/
 已实现文件：`deploy/start_standalone.bat`（配套 `deploy/run_api.bat`）。关键行为：
 
 - 检查 Node.js 与 3000 端口占用；
-- 首次运行自动安装依赖并构建后端；
+- 首次运行自动安装依赖并构建后端与前端；
 - 执行 `prisma db push` 建库，再用 `npm run db:seed` 导入 13 张操作卡与 6 名学生；
-- 后端健康检查通过后打开 `http://localhost:3000`；
+- 后端健康检查通过后打开 `http://localhost:3000`（API 直接托管 `apps/web/dist`，无需另起前端服务）；
 - 退出主窗口时停止 API 进程。
 
 #### 6.2 方案 B：医院/多科室联网版 Docker 一键部署编排（`deploy/docker-compose.yml`，基于 PostgreSQL）
@@ -302,6 +328,7 @@ vmi-tis-platform/
 
 - PostgreSQL 15 与 API 双服务，数据库健康检查通过后启动 API；
 - 构建期由 `scripts/prepare-schema.mjs --target postgresql` 生成 PostgreSQL 版 Schema，仓库不维护第二份 Schema；
+- 构建期同时编译 `apps/web`，API 直接托管前端 `dist`；
 - 启动时执行 `prisma db push` 与 Seed，再启动 API；
 - API 暴露 3000 端口，数据持久化到 `pgdata` 卷。
 

@@ -149,3 +149,64 @@ node scripts/verify-task4.mjs   # 32/32 通过
 ### 下一步
 
 - Task 5：React 三端工程化与页面迁移。
+
+## Task 5（同日完成）
+
+### 已完成
+
+- ✅ `apps/web`：React 18 + Vite 5 + TypeScript + Tailwind 3 + Zustand + React Router + socket.io-client。
+- ✅ 三端路由级终端：`/web` 教师工作台、`/student` 学生 Pad、`/parent` 家长端，顶部一键切换。
+- ✅ 教师端 9 页：工作台首页、学生档案、评估中心、IEP 计划、课堂记分台、数据画像、家校作业、操作卡库、系统设置。
+- ✅ 学生 Pad 4 款 Canvas 游戏：泡泡追追看、奇妙聚散球、森林找星星、眼动 5 点校准；含星星奖励与全屏护眼遮罩。
+- ✅ 家长端 4 Tab：今日任务、视频打卡、成长曲线、家校留言。
+- ✅ 通用组件：Header / Sidebar / Toast / TrialBox；hooks：`useKeyboardShortcuts` / `useWebSocket`。
+- ✅ 深青色 `#0F4C5C` 主题与 `rounded-xl` 卡片；Chart.js 4 雷达图与正确率趋势图。
+- ✅ Vite 代理 `/api` 与 `/socket.io`；生产构建由 API 直接托管 `apps/web/dist`。
+
+### 验证
+
+```bash
+npm run build                     # shared-types + api + web 全部通过
+npm run dev:web                   # http://localhost:5173
+node scripts/verify-task5.mjs     # 构建产物与三端路由静态检查（见下）
+```
+
+- 浏览器实测：三端切换、教师 9 页、学生 4 游戏、家长 4 Tab 均正常渲染。
+- 课堂记分台按 `1` 键成功记录 1 回合（正确率 100%，1/1 通过）。
+- 学生 Pad 数字额度累计到 0 后全屏护眼遮罩出现；点击「教师授权解锁」后额度恢复 900 秒。
+- 生产模式 `http://localhost:3000/web/home` 由 API 托管前端，学生选择与数据加载正常。
+
+### 偏差
+
+- 家长端为响应式 H5，未使用 Taro 小程序。
+- 图表使用 Chart.js 4；数字训练时长使用原生条形图。
+- 学生 Pad 的数字计时每 15 秒同步一次；真实眼动仪/摄像头未接入。
+- 单机版仍依赖系统 Node.js，便携运行时未打包。
+
+## Task 6（同日完成）
+
+### 已完成
+
+- ✅ `SessionGateway`：`SWITCH_PAD_TASK`、`PAD_TRIAL_COMPLETED`、`SESSION_STAGE_CHANGED`；房间 `role:*` / `student:*`；`transports: ['websocket', 'polling']`。
+- ✅ 教师端「投屏到学生 Pad」面板；学生 Pad 接收切换；教师端接收回合回传。
+- ✅ R4 教师授权解锁：`POST /api/sessions/:id/digital-reset`。
+- ✅ Capacitor 6：`capacitor.config.ts`（`com.vmitis.pad`）、`apps/web/android/` 工程、`cap:add:android` / `cap:sync` / `cap:open` 脚本。
+- ✅ API 托管前端 `dist`；单机版 `http://localhost:3000` 直接可用；Docker 构建同时编译 web。
+
+### 验证
+
+```bash
+node scripts/verify-task6.mjs   # 7/7 通过：教师/学生 Socket、投屏、回合回传、Stage 广播
+npx cap add android             # 成功生成 apps/web/android/
+npx cap sync android            # 成功复制 web 产物
+curl http://localhost:3000/     # 返回前端 index.html
+curl http://localhost:3000/web/home  # SPA 深链回退正常
+```
+
+### 偏差 / 未验证
+
+- ⏳ APK 未实际编译：当前环境无 Android SDK / JDK；`android/` 工程已生成，需在 Android Studio 或 CI 执行 `./gradlew assembleDebug`。
+- ⏳ Docker 未本机实测（当前环境未安装 Docker）。
+- ⏳ 便携 Node 运行时未打包。
+- ⏳ 眼动仪硬件桥接（60 Hz）与 Capacitor 原生插件（status-bar / text-to-speech / camera）未接入；当前为浏览器 Canvas + 触控/鼠标。
+- APK 连接医院服务器需在构建前设置 `VITE_API_BASE` / `VITE_SOCKET_URL`，示例见 `apps/web/.env.example`。

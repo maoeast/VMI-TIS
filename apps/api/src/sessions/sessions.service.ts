@@ -224,6 +224,29 @@ export class SessionsService {
     };
   }
 
+  async resetDigitalLimit(id: string, authorizedBy: string) {
+    const session = await this.findOne(id);
+
+    const updated = await this.prisma.trainingSession.update({
+      where: { id },
+      data: { digitalDurationSec: 0 },
+    });
+
+    await this.auditLogService.log({
+      action: AuditAction.RESET_DIGITAL_LIMIT,
+      targetType: 'session',
+      targetId: id,
+      changesBefore: { digitalDurationSec: session.digitalDurationSec },
+      changesAfter: { digitalDurationSec: 0, authorizedBy },
+    });
+
+    return {
+      session: updated,
+      digitalDurationSec: 0,
+      remainingQuotaSec: DIGITAL_LIMIT_SEC,
+    };
+  }
+
   async digitalStart(id: string) {
     const session = await this.findOne(id);
     return {
@@ -295,6 +318,26 @@ export class SessionsService {
 
     if (exact) {
       return exact;
+    }
+
+    // 契约库没有 L4 专属卡：优先向下取最近层级（L4 → L3），再向上取。
+    const order = ['L0', 'L1', 'L2', 'L3', 'L5'];
+    const index = order.indexOf(level);
+
+    for (let cursor = index; cursor >= 0; cursor -= 1) {
+      const card = await this.prisma.sopCard.findFirst({
+        where: { cardLevel: order[cursor] },
+        orderBy: { cardCode: 'asc' },
+      });
+      if (card) return card;
+    }
+
+    for (let cursor = Math.max(index + 1, 0); cursor < order.length; cursor += 1) {
+      const card = await this.prisma.sopCard.findFirst({
+        where: { cardLevel: order[cursor] },
+        orderBy: { cardCode: 'asc' },
+      });
+      if (card) return card;
     }
 
     return this.prisma.sopCard.findFirst({ orderBy: { cardCode: 'asc' } });

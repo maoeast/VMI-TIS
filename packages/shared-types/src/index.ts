@@ -118,6 +118,7 @@ export enum AuditAction {
   CREATE_SESSION = 'CREATE_SESSION',
   RECORD_TRIAL = 'RECORD_TRIAL',
   UPDATE_STAGE = 'UPDATE_STAGE',
+  RESET_DIGITAL_LIMIT = 'RESET_DIGITAL_LIMIT',
   FINISH_SESSION = 'FINISH_SESSION',
   CREATE_HOMEWORK = 'CREATE_HOMEWORK',
   SUBMIT_CHECKIN = 'SUBMIT_CHECKIN',
@@ -239,6 +240,7 @@ export interface HomeworkCheckin {
   id: string;
   studentId: string;
   taskName: string;
+  durationMin: number;
   assignedDate: Date;
   dueDate: Date;
   status: HomeworkCheckinStatus;

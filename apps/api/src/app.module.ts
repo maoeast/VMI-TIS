@@ -4,6 +4,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { AppController } from './app.controller';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { AuditModule } from './common/audit/audit.module';
+import { SessionGateway } from './gateway/session.gateway';
 import { HomeworkModule } from './homework/homework.module';
 import { IepModule } from './iep/iep.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -29,5 +30,6 @@ import { WorkbenchModule } from './workbench/workbench.module';
     AnalyticsModule,
   ],
   controllers: [AppController],
+  providers: [SessionGateway],
 })
 export class AppModule {}

@@ -70,6 +70,7 @@ export class HomeworkService {
       data: {
         studentId: dto.studentId,
         taskName: dto.taskName,
+        durationMin: dto.durationMin ?? 10,
         assignedDate,
         dueDate,
         status: 'PENDING',
