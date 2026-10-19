@@ -60,8 +60,34 @@ set VMI_TIS_NO_BROWSER=1 && set VMI_TIS_NO_PAUSE=1 && deploy\start_standalone.ba
 
 - ⏳ Docker 服务器版未本机实测（当前环境未安装 Docker），已做文件级静态检查。
 - ⏳ 单机版“无需安装 Node.js”尚未打包便携运行时；当前 `start_standalone.bat` 要求机器已安装 Node.js 20+。后续需补便携 Node 打包。
-- ⏳ Task 2–6 未开始。
+- ⏳ Task 3–6 未开始。
 
-### 明天计划
+## Task 2（同日完成）
 
-- Task 2：学生档案 CRUD + 红区熔断 API。
+### 已完成
+
+- ✅ 学生档案 CRUD：`POST/GET/PATCH/DELETE /api/students`，自动生成 `VMI-<year><seq>` 学号。
+- ✅ 筛选查询：`GET /api/students?level=&triageStatus=&promotionStatus=&keyword=&page=&pageSize=`。
+- ✅ Excel/CSV 批量导入：`POST /api/students/import-excel`，支持 姓名/年龄/出生日期/所在机构/主责治疗师 等表头，失败行进入 `errors`。
+- ✅ 红区熔断 R1：`POST /api/assessments/triage` 检测屈光参差、斜视、遮盖、复视、眼球震颤、视力异常；命中即锁定 `RED_ZONE_LOCKED` 并生成转介单。
+- ✅ 回执流程：`POST /api/assessments/referral-upload` → `REFERRAL_UPLOADED`；`POST /api/assessments/referral-audit` → `GREEN_ACTIVE` / `RED_ZONE_LOCKED`。
+- ✅ 排课前置校验：`POST /api/schedules` 由 `RedZoneGuard` 拦截红区学生并返回 403 `RED_ZONE_LOCKED`；绿区返回 IEP 周课表检查结果。
+- ✅ 审计日志：学生 CRUD / Excel 导入走 `@Audit` 拦截器；红区/回执/审核由服务显式记录；`GET /api/audit-logs` 支持分页与过滤。
+- ✅ 共享契约扩展：`AuditAction` 增加学生/回执/训练动作；`RecordTrialDto` 增加 `material/digitalSeconds/isDigital`；`AutoLevelInput` 增加 `classroomAdaptationPass`。
+
+### 验证
+
+```bash
+node scripts/verify-task2.mjs   # 24/24 通过
+# 含：创建学生、筛选、红区 403、回执上传/审核、绿区排课、50 人 CSV 导入 <5s、审计日志动作齐全
+```
+
+### 偏差
+
+- Excel 解析使用 `exceljs`（任务卡示例为 `xlsx`），同时支持 `.xlsx` 与 `.csv`。
+- `POST /api/schedules` 当前是“红区前置校验 + IEP 周课表检查”，不新建独立排课表；Schema 契约中没有 Schedule 模型。
+- `SubmitTriageDto.redZoneItems` 保留但设为可选，服务端不信任客户端结论并重新计算。
+
+### 下一步
+
+- Task 3：四层评估记录、连续 3 题 0 分中止、L0–L5 自动分级、评估报告。

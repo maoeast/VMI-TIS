@@ -104,14 +104,24 @@ export enum UserRole {
 /** 审计日志操作类型 */
 export enum AuditAction {
   CREATE_STUDENT = 'CREATE_STUDENT',
+  UPDATE_STUDENT = 'UPDATE_STUDENT',
+  DELETE_STUDENT = 'DELETE_STUDENT',
   IMPORT_EXCEL = 'IMPORT_EXCEL',
   RED_ZONE_LOCK = 'RED_ZONE_LOCK',
   UNLOCK_RED_ZONE = 'UNLOCK_RED_ZONE',
+  UPLOAD_REFERRAL = 'UPLOAD_REFERRAL',
   APPROVE_PROMOTION = 'APPROVE_PROMOTION',
   CRON_CLEAN_VIDEOS = 'CRON_CLEAN_VIDEOS',
   UPDATE_ASSESSMENT = 'UPDATE_ASSESSMENT',
   CREATE_IEP = 'CREATE_IEP',
+  UPDATE_IEP = 'UPDATE_IEP',
+  CREATE_SESSION = 'CREATE_SESSION',
+  RECORD_TRIAL = 'RECORD_TRIAL',
+  UPDATE_STAGE = 'UPDATE_STAGE',
   FINISH_SESSION = 'FINISH_SESSION',
+  CREATE_HOMEWORK = 'CREATE_HOMEWORK',
+  SUBMIT_CHECKIN = 'SUBMIT_CHECKIN',
+  REPLY_CHECKIN = 'REPLY_CHECKIN',
 }
 
 // ==================== 数据库实体接口（与 Prisma Model 1:1 映射）====================
@@ -319,6 +329,12 @@ export interface CreateIepPlanDto {
 export interface RecordTrialDto {
   result: 'pass' | 'fail';
   promptLevel: PromptLevel;
+  /** 本回合使用的训练材料；用于 R3 跨材料判定（可选） */
+  material?: string;
+  /** 本回合数字训练秒数；用于 R4 护眼额度累计（可选） */
+  digitalSeconds?: number;
+  /** 本回合是否属于数字训练（可选） */
+  isDigital?: boolean;
 }
 
 /** POST /api/sessions/:id/finish 结课请求 */
@@ -390,6 +406,8 @@ export interface EyeTrackerFramePayload {
 export interface TrialRecord {
   result: 'pass' | 'fail';
   promptLevel: PromptLevel;
+  material?: string;
+  digitalSeconds?: number;
   timestamp?: number;
 }
 
@@ -418,6 +436,8 @@ export interface AutoLevelInput {
   tvps4Std?: number;
   mvpt3Std?: number;
   beeryVmiStd?: number;
+  /** 课堂抄写/文具使用补充评估；false → L4，true/未测 → L5 */
+  classroomAdaptationPass?: boolean;
 }
 
 /** 晋级触发检查结果 */
