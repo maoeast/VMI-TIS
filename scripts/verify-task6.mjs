@@ -96,10 +96,24 @@ async function main() {
     { headers: ACTOR_HEADERS },
   );
   const sessions = await sessionsResponse.json();
-  const activeSession = sessions.find((session) => !session.isFinished);
-  check('存在进行中的课次', Boolean(activeSession), '没有进行中的课次');
+  let activeSession = sessions.find((session) => !session.isFinished);
 
-  if (activeSession) {
+  if (!activeSession) {
+    const createdResponse = await fetch(`${ORIGIN}/api/sessions`, {
+      method: 'POST',
+      headers: { ...ACTOR_HEADERS, 'content-type': 'application/json' },
+      body: JSON.stringify({ studentId: student.id }),
+    });
+    activeSession = await createdResponse.json();
+  }
+
+  check(
+    '存在进行中的课次（无则自动创建）',
+    Boolean(activeSession?.id),
+    '没有进行中的课次',
+  );
+
+  if (activeSession?.id) {
     const stagePromise = waitFor(studentSocket, 'SESSION_STAGE_CHANGED');
     const patchResponse = await fetch(
       `${ORIGIN}/api/sessions/${activeSession.id}/stage`,
