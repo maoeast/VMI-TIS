@@ -1,21 +1,16 @@
 import {
   IsDateString,
-  IsIn,
   IsOptional,
   IsString,
   MaxLength,
   MinLength,
 } from 'class-validator';
 
-const LEVELS = ['L0', 'L1', 'L2', 'L3', 'L4', 'L5'];
-const TRIAGE_STATUSES = [
-  'PENDING_SCREENING',
-  'RED_ZONE_LOCKED',
-  'REFERRAL_UPLOADED',
-  'GREEN_ACTIVE',
-];
-const PROMOTION_STATUSES = ['IN_PROGRESS', 'PROMOTION_READY'];
-
+/**
+ * 学生档案通用更新只允许基础资料字段。
+ * 层级、分流状态、晋级状态分别由评估定级、红区/回执审核、晋级审批流程写入，
+ * 不允许通过通用 PATCH 绕过状态机。
+ */
 export class UpdateStudentDto {
   @IsOptional()
   @IsString()
@@ -37,18 +32,6 @@ export class UpdateStudentDto {
   @MinLength(1)
   @MaxLength(100)
   schoolScene?: string;
-
-  @IsOptional()
-  @IsIn(LEVELS)
-  currentLevel?: string;
-
-  @IsOptional()
-  @IsIn(TRIAGE_STATUSES)
-  triageStatus?: string;
-
-  @IsOptional()
-  @IsIn(PROMOTION_STATUSES)
-  promotionStatus?: string;
 
   @IsOptional()
   @IsString()

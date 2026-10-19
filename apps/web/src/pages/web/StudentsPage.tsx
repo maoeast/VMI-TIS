@@ -40,6 +40,9 @@ export function StudentsPage() {
   const showToast = useAppStore((state) => state.showToast);
   const activeStudentId = useAppStore((state) => state.activeStudentId);
   const setActiveStudent = useAppStore((state) => state.setActiveStudent);
+  const bumpStudentsVersion = useAppStore(
+    (state) => state.bumpStudentsVersion,
+  );
 
   const [students, setStudents] = useState<Student[]>([]);
   const [total, setTotal] = useState(0);
@@ -56,9 +59,6 @@ export function StudentsPage() {
 
   const [detail, setDetail] = useState<StudentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [editLevel, setEditLevel] = useState('L0');
-  const [editTriage, setEditTriage] = useState('PENDING_SCREENING');
-  const [editPromotion, setEditPromotion] = useState('IN_PROGRESS');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,9 +92,6 @@ export function StudentsPage() {
     try {
       const response = await studentApi.get(student.id);
       setDetail(response);
-      setEditLevel(response.currentLevel);
-      setEditTriage(response.triageStatus);
-      setEditPromotion(response.promotionStatus);
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
@@ -121,27 +118,12 @@ export function StudentsPage() {
       showToast(`已创建 ${created.name}（${created.studentCode}）`, 'success');
       setShowCreate(false);
       setForm(EMPTY_FORM);
+      bumpStudentsVersion();
       await load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const updateStudent = async () => {
-    if (!detail) return;
-    try {
-      await studentApi.update(detail.id, {
-        currentLevel: editLevel,
-        triageStatus: editTriage,
-        promotionStatus: editPromotion,
-      } as never);
-      showToast('学生状态已更新', 'success');
-      await load();
-      setDetail(null);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), 'error');
     }
   };
 
@@ -155,6 +137,7 @@ export function StudentsPage() {
       if (activeStudentId === student.id) {
         setActiveStudent(null);
       }
+      bumpStudentsVersion();
       await load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -169,6 +152,9 @@ export function StudentsPage() {
         `导入完成：成功 ${result.imported}，失败 ${result.failed}`,
         result.failed > 0 ? 'error' : 'success',
       );
+      if (result.imported > 0) {
+        bumpStudentsVersion();
+      }
       await load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
@@ -183,7 +169,7 @@ export function StudentsPage() {
     <div>
       <PageHeader
         title="学生档案中心"
-        description={`共 ${total} 名学生 · 支持条件筛选、Excel/CSV 批量导入与状态维护`}
+        description={`共 ${total} 名学生 · 支持条件筛选、Excel/CSV 批量导入；层级与状态由评估/审核/晋级流程维护`}
         actions={
           <>
             <button type="button" className="btn-secondary" onClick={() => void load()}>
@@ -453,40 +439,19 @@ export function StudentsPage() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <label className="text-xs font-semibold text-slate-600">
-                能力层级
-                <select value={editLevel} onChange={(event) => setEditLevel(event.target.value)} className="input mt-1">
-                  {['L0', 'L1', 'L2', 'L3', 'L4', 'L5'].map((item) => (
-                    <option key={item} value={item}>{levelLabel(item)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                分流状态
-                <select value={editTriage} onChange={(event) => setEditTriage(event.target.value)} className="input mt-1">
-                  {Object.entries({
-                    PENDING_SCREENING: '待初筛',
-                    RED_ZONE_LOCKED: '红区锁定',
-                    REFERRAL_UPLOADED: '回执待审核',
-                    GREEN_ACTIVE: '绿区在训',
-                  }).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-xs font-semibold text-slate-600">
-                晋级状态
-                <select value={editPromotion} onChange={(event) => setEditPromotion(event.target.value)} className="input mt-1">
-                  <option value="IN_PROGRESS">训练中</option>
-                  <option value="PROMOTION_READY">待晋级</option>
-                </select>
-              </label>
-            </div>
-            <div className="mt-3 flex justify-end">
-              <button type="button" className="btn-primary" onClick={() => void updateStudent()}>
-                保存状态
-              </button>
+            <div className="flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3 text-xs">
+              <span className="badge bg-teal-50 text-teal-800">
+                {levelLabel(detail.currentLevel)}
+              </span>
+              <span className={`badge ${triageBadgeClass(detail.triageStatus)}`}>
+                {triageLabel(detail.triageStatus)}
+              </span>
+              <span className={`badge ${promotionBadgeClass(detail.promotionStatus)}`}>
+                {promotionLabel(detail.promotionStatus)}
+              </span>
+              <span className="ml-auto text-[11px] text-slate-400">
+                层级、分流与晋级状态由评估、回执审核、晋级流程自动维护
+              </span>
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">

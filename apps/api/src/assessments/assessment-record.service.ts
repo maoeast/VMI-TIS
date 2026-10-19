@@ -38,38 +38,42 @@ export class AssessmentRecordService {
   async submitScaleScore(dto: SubmitScaleScoreDto): Promise<ScaleScoreResult> {
     await this.ensureStudentExists(dto.studentId);
 
-    const sessionId = dto.sessionId ?? `${dto.studentId}:${dto.evalPhase}`;
+    // 客户端 sessionId 只在本学生/本评估阶段内有效；
+    // 必须把 studentId 与 evalPhase 一起纳入键，避免跨学生串扰。
+    const sessionKey = `${dto.studentId}:${dto.evalPhase}:${
+      dto.sessionId ?? 'default'
+    }`;
 
     if (dto.reset) {
-      this.recentScores.delete(sessionId);
+      this.recentScores.delete(sessionKey);
       return {
         shouldTerminate: false,
-        sessionId,
+        sessionId: sessionKey,
         submittedItems: 0,
         lastThree: [],
         message: '已重置本轮施测的连续得分计数',
       };
     }
 
-    const scores = this.recentScores.get(sessionId) ?? [];
+    const scores = this.recentScores.get(sessionKey) ?? [];
 
     if (dto.score !== undefined) {
       scores.push(dto.score);
     }
 
-    this.recentScores.set(sessionId, scores);
+    this.recentScores.set(sessionKey, scores);
 
     const lastThree = scores.slice(-3);
     const shouldTerminate =
       lastThree.length === 3 && lastThree.every((score) => score === 0);
 
     if (shouldTerminate) {
-      this.recentScores.delete(sessionId);
+      this.recentScores.delete(sessionKey);
     }
 
     return {
       shouldTerminate,
-      sessionId,
+      sessionId: sessionKey,
       submittedItems: scores.length,
       lastThree,
       ...(shouldTerminate
@@ -109,37 +113,42 @@ export class AssessmentRecordService {
 
     const autoLevel = this.autoLevelService.calculateLevel(autoLevelInput);
 
-    const record = await this.prisma.assessmentRecord.create({
-      data: {
-        studentId: dto.studentId,
-        evalPhase: dto.evalPhase,
-        acuityLeft: dto.acuityLeft ?? null,
-        acuityRight: dto.acuityRight ?? null,
-        refractionStatus: dto.refractionStatus ?? null,
-        accomAmplitudeD: dto.accomAmplitudeD ?? null,
-        accomFacilityCpm: dto.accomFacilityCpm ?? null,
-        npcCm: dto.npcCm ?? null,
-        binocularTier: dto.binocularTier ?? null,
-        nsucoScoreJson: dto.nsucoScore
-          ? JSON.stringify(dto.nsucoScore)
-          : null,
-        beeryVmiRaw: dto.beeryVmiRaw ?? null,
-        beeryVmiStd: dto.beeryVmiStd ?? null,
-        beeryVpStd: dto.beeryVpStd ?? null,
-        beeryMcStd: dto.beeryMcStd ?? null,
-        tvps4Std: dto.tvps4Std ?? null,
-        mvpt3Std: dto.mvpt3Std ?? null,
-        demNormTier: dto.demNormTier ?? null,
-        radarScoresJson: dto.radarScores
-          ? JSON.stringify(dto.radarScores)
-          : null,
-        autoLevel,
-      },
-    });
+    // 评估记录与学生 currentLevel 必须同成同败，避免只落一半。
+    const record = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.assessmentRecord.create({
+        data: {
+          studentId: dto.studentId,
+          evalPhase: dto.evalPhase,
+          acuityLeft: dto.acuityLeft ?? null,
+          acuityRight: dto.acuityRight ?? null,
+          refractionStatus: dto.refractionStatus ?? null,
+          accomAmplitudeD: dto.accomAmplitudeD ?? null,
+          accomFacilityCpm: dto.accomFacilityCpm ?? null,
+          npcCm: dto.npcCm ?? null,
+          binocularTier: dto.binocularTier ?? null,
+          nsucoScoreJson: dto.nsucoScore
+            ? JSON.stringify(dto.nsucoScore)
+            : null,
+          beeryVmiRaw: dto.beeryVmiRaw ?? null,
+          beeryVmiStd: dto.beeryVmiStd ?? null,
+          beeryVpStd: dto.beeryVpStd ?? null,
+          beeryMcStd: dto.beeryMcStd ?? null,
+          tvps4Std: dto.tvps4Std ?? null,
+          mvpt3Std: dto.mvpt3Std ?? null,
+          demNormTier: dto.demNormTier ?? null,
+          radarScoresJson: dto.radarScores
+            ? JSON.stringify(dto.radarScores)
+            : null,
+          autoLevel,
+        },
+      });
 
-    await this.prisma.student.update({
-      where: { id: dto.studentId },
-      data: { currentLevel: autoLevel },
+      await tx.student.update({
+        where: { id: dto.studentId },
+        data: { currentLevel: autoLevel },
+      });
+
+      return created;
     });
 
     await this.auditLogService.log({

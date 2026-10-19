@@ -11,7 +11,8 @@ interface ShortcutHandlers {
 /**
  * 课堂记分台盲操快捷键：
  * Space/1 记成功、0 记失败、↑↓ 调提示层级、N 下一环节。
- * 输入框、文本域、下拉框聚焦时不触发。
+ * 输入框、文本域、下拉框、按钮/链接等交互控件聚焦时不触发，
+ * 避免 Space 在“结课”等按钮上被当成记分。
  */
 export function useKeyboardShortcuts({
   enabled = true,
@@ -30,7 +31,10 @@ export function useKeyboardShortcuts({
         tag === 'input' ||
         tag === 'textarea' ||
         tag === 'select' ||
-        target?.isContentEditable
+        tag === 'button' ||
+        tag === 'a' ||
+        target?.isContentEditable ||
+        target?.closest('button, a, [role="button"]')
       ) {
         return;
       }

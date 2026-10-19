@@ -1,5 +1,6 @@
 import { Play, ShieldCheck, Video } from 'lucide-react';
 import type { HomeworkCheckin } from '@vmi-tis/shared-types';
+import { resolveApiUrl } from '../../api/client';
 import { formatDate } from '../../utils/format';
 
 interface VideosTabProps {
@@ -26,17 +27,26 @@ export function VideosTab({ homework }: VideosTabProps) {
 
       {completed.map((item) => (
         <div key={item.id} className="overflow-hidden rounded-2xl bg-white shadow-sm">
-          <div className="relative flex h-40 items-center justify-center bg-slate-900">
-            <Video className="h-10 w-10 text-slate-600" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white">
-                <Play className="h-5 w-5" />
+          {item.videoUrl && !item.videoDeletedAt ? (
+            <video
+              controls
+              preload="metadata"
+              className="h-40 w-full bg-black object-contain"
+              src={resolveApiUrl(item.videoUrl)}
+            />
+          ) : (
+            <div className="relative flex h-40 items-center justify-center bg-slate-900">
+              <Video className="h-10 w-10 text-slate-600" />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/20 text-white">
+                  <Play className="h-5 w-5" />
+                </div>
               </div>
+              <span className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-[10px] text-white">
+                {item.videoDeletedAt ? '视频已过期清理' : '暂无视频'}
+              </span>
             </div>
-            <span className="absolute bottom-2 left-2 rounded bg-black/50 px-2 py-0.5 text-[10px] text-white">
-              {item.videoDeletedAt ? '视频已过期清理' : item.videoUrl ?? '演示视频'}
-            </span>
-          </div>
+          )}
           <div className="p-3">
             <div className="text-xs font-bold text-slate-800">{item.taskName}</div>
             <div className="mt-1 text-[11px] text-slate-500">

@@ -35,6 +35,13 @@ async function bootstrap(): Promise<void> {
   mkdirSync(reportDir, { recursive: true });
   app.useStaticAssets(reportDir, { prefix: '/api/reports/' });
 
+  // 家庭作业视频上传目录：apps/api/data/uploads → /api/uploads/<file>
+  const uploadDir = process.env.UPLOADS_DIR
+    ? resolve(process.env.UPLOADS_DIR)
+    : resolve(__dirname, '../data/uploads');
+  mkdirSync(uploadDir, { recursive: true });
+  app.useStaticAssets(uploadDir, { prefix: '/api/uploads/' });
+
   // 单机版/服务器版由 API 直接托管前端 dist，浏览器打开 http://localhost:3000 即可。
   const webDist = resolve(__dirname, '../../web/dist');
   if (existsSync(webDist)) {

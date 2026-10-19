@@ -72,7 +72,7 @@ export class SessionsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: DigitalResetDto,
   ) {
-    return this.sessionsService.resetDigitalLimit(id, dto.authorizedBy);
+    return this.sessionsService.resetDigitalLimit(id, dto.authorizationCode);
   }
 
   @Post(':id/finish')

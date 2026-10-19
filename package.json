@@ -16,7 +16,8 @@
     "start": "npm run start:prod -w @vmi-tis/api",
     "start:dev": "npm run start:dev -w @vmi-tis/api",
     "dev:web": "npm run dev -w @vmi-tis/web",
-    "verify:task1": "npm run db:verify -w @vmi-tis/api"
+    "verify:task1": "npm run db:verify -w @vmi-tis/api",
+    "verify:all": "node scripts/run-verification.mjs"
   },
   "engines": {
     "node": ">=20"

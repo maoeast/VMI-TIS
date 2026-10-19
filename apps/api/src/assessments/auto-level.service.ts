@@ -43,13 +43,13 @@ export class AutoLevelService {
       return CapabilityLevel.L3;
     }
 
-    if (
-      input.beeryVmiStd !== undefined &&
-      input.beeryVmiStd >= 80 &&
-      input.tvps4Std !== undefined &&
-      input.tvps4Std >= 80 &&
-      input.classroomAdaptationPass === false
-    ) {
+    // 缺失指标按既定策略视为“未异常/达标”，
+    // 因此课堂适应明确不达标时，缺 TVPS 或 Beery 仍应降到 L4。
+    const motorOk =
+      input.beeryVmiStd === undefined || input.beeryVmiStd >= 80;
+    const tvpsOk = input.tvps4Std === undefined || input.tvps4Std >= 80;
+
+    if (motorOk && tvpsOk && input.classroomAdaptationPass === false) {
       return CapabilityLevel.L4;
     }
 

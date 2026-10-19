@@ -3,6 +3,7 @@
  * Task 3 验收脚本：R2 连续 3 题 0 分中止、L0–L5 自动分级、评估记录分组、报告生成。
  */
 const BASE = process.env.API_BASE ?? 'http://localhost:3000/api';
+const ORIGIN = BASE.replace(/\/api\/?$/, '');
 const failures = [];
 
 function check(name, condition, detail) {
@@ -161,6 +162,18 @@ async function main() {
     `status=${l4.status}, level=${l4.body?.autoLevel}`,
   );
 
+  const l4Missing = await createRecord(lin.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 85,
+    classroomAdaptationPass: false,
+  });
+  check(
+    '课堂应用不足且缺 TVPS → L4（缺失指标按达标处理）',
+    l4Missing.status === 201 && l4Missing.body.autoLevel === 'L4',
+    `status=${l4Missing.status}, level=${l4Missing.body?.autoLevel}`,
+  );
+
   const l5 = await createRecord(lin.id, {
     stabilityPass: true,
     npcCm: 7,
@@ -193,8 +206,8 @@ async function main() {
   check(
     '评估记录按 evalPhase 分组返回',
     records.status === 200 &&
-      records.body.total === 6 &&
-      records.body.groups.BASELINE.length === 6,
+      records.body.total === 7 &&
+      records.body.groups.BASELINE.length === 7,
     `status=${records.status}, total=${records.body?.total}`,
   );
 
@@ -209,9 +222,7 @@ async function main() {
     JSON.stringify(report.body),
   );
 
-  const reportPage = await fetch(
-    `http://localhost:3000${report.body.reportFileUrl}`,
-  );
+  const reportPage = await fetch(`${ORIGIN}${report.body.reportFileUrl}`);
   const reportHtml = await reportPage.text();
   check(
     '报告页面可访问且包含学生姓名',

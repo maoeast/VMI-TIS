@@ -378,11 +378,11 @@ export const sessionApi = {
       allowed: boolean;
       remainingQuotaSec: number;
     }>(`/sessions/${id}/digital-start`),
-  resetDigital: (id: string, authorizedBy: string) =>
+  resetDigital: (id: string, authorizationCode: string) =>
     api.post<{
       digitalDurationSec: number;
       remainingQuotaSec: number;
-    }>(`/sessions/${id}/digital-reset`, { authorizedBy }),
+    }>(`/sessions/${id}/digital-reset`, { authorizationCode }),
   finish: (id: string, payload: { therapistNotes?: string } = {}) =>
     api.post<FinishResponse>(`/sessions/${id}/finish`, payload),
 };
@@ -397,6 +397,11 @@ export const homeworkApi = {
     taskName: string;
     durationMin?: number;
   }) => api.post<HomeworkCheckin>('/homework-checkins', payload),
+  uploadVideo: (id: string, file: File) =>
+    upload<{ videoUrl: string; fileName: string }>(
+      `/homework-checkins/${id}/video`,
+      file,
+    ),
   checkin: (
     id: string,
     payload: {

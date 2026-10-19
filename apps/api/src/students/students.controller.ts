@@ -36,7 +36,9 @@ export class StudentsController {
   }
 
   @Post('import-excel')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
+  )
   @Audit({ action: AuditAction.IMPORT_EXCEL, targetType: 'student' })
   importExcel(
     @UploadedFile() file: Express.Multer.File,

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CheckCircle2, Clock, Video } from 'lucide-react';
 import type { HomeworkCheckin } from '@vmi-tis/shared-types';
 import { homeworkApi } from '../../api/client';
@@ -11,20 +12,25 @@ interface TasksTabProps {
 
 export function TasksTab({ homework, onRefresh }: TasksTabProps) {
   const showToast = useAppStore((state) => state.showToast);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
   const pending = homework.filter((item) => item.status !== 'COMPLETED');
   const completed = homework.filter((item) => item.status === 'COMPLETED');
 
-  const checkin = async (item: HomeworkCheckin) => {
+  const uploadAndCheckin = async (item: HomeworkCheckin, file: File) => {
+    setUploadingId(item.id);
     try {
+      const uploaded = await homeworkApi.uploadVideo(item.id, file);
       await homeworkApi.checkin(item.id, {
-        videoUrl: '/uploads/parent-checkin-demo.mp4',
-        videoDurationSec: 32,
-        parentNote: '今天主动完成了家庭练习，拍了视频。',
+        videoUrl: uploaded.videoUrl,
+        videoDurationSec: 0,
+        parentNote: '今天主动完成了家庭练习，上传了视频。',
       });
-      showToast('打卡成功，已同步给治疗师', 'success');
+      showToast('视频已上传，打卡成功并同步给治疗师', 'success');
       await onRefresh();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setUploadingId(null);
     }
   };
 
@@ -54,14 +60,25 @@ export function TasksTab({ homework, onRefresh }: TasksTabProps) {
             </div>
             <span className="badge bg-amber-100 text-amber-800">待打卡</span>
           </div>
-          <button
-            type="button"
-            onClick={() => void checkin(item)}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0F4C5C] py-2.5 text-xs font-bold text-white"
+          <label
+            className={`mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#0F4C5C] py-2.5 text-xs font-bold text-white ${
+              uploadingId === item.id ? 'cursor-wait opacity-70' : ''
+            }`}
           >
             <Video className="h-4 w-4" />
-            上传视频并打卡
-          </button>
+            {uploadingId === item.id ? '上传中…' : '上传视频并打卡'}
+            <input
+              type="file"
+              accept="video/*"
+              className="hidden"
+              disabled={uploadingId === item.id}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) void uploadAndCheckin(item, file);
+              }}
+            />
+          </label>
         </div>
       ))}
 

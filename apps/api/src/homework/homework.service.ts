@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { existsSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AuditAction } from '@vmi-tis/shared-types';
@@ -13,7 +14,9 @@ const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class HomeworkService {
-  private readonly uploadsDir = resolve(__dirname, '../../data/uploads');
+  private readonly uploadsDir = process.env.UPLOADS_DIR
+    ? resolve(process.env.UPLOADS_DIR)
+    : resolve(__dirname, '../../data/uploads');
 
   constructor(
     private readonly prisma: PrismaService,
@@ -91,6 +94,14 @@ export class HomeworkService {
     return checkin;
   }
 
+  async attachVideo(id: string, fileName: string) {
+    await this.findOne(id);
+    return {
+      videoUrl: `/api/uploads/${fileName}`,
+      fileName,
+    };
+  }
+
   async submitCheckin(id: string, dto: SubmitCheckinDto) {
     const checkin = await this.findOne(id);
     const now = new Date();
@@ -162,7 +173,7 @@ export class HomeworkService {
 
   /**
    * 7 天过期视频清理：只删除 apps/api/data/uploads 下的本地文件，
-   * 保留打卡文本与教师点评；远程 URL 仅标记 videoDeletedAt。
+   * 保留打卡文本与教师点评；远程 URL 无法确认清理，保留待人工处理。
    */
   async cleanExpiredVideos() {
     const now = new Date();
@@ -178,15 +189,39 @@ export class HomeworkService {
     let deletedFiles = 0;
 
     for (const checkin of expired) {
-      if (checkin.videoUrl) {
-        const localPath = this.resolveLocalUpload(checkin.videoUrl);
-        if (localPath && existsSync(localPath)) {
-          try {
-            unlinkSync(localPath);
-            deletedFiles += 1;
-          } catch {
-            // 文件被占用或权限不足时保留文件，但记录已过期标记。
-          }
+      if (!checkin.videoUrl) {
+        await this.prisma.homeworkCheckin.update({
+          where: { id: checkin.id },
+          data: { videoDeletedAt: now },
+        });
+        cleaned += 1;
+        continue;
+      }
+
+      if (!this.isLocalVideoUrl(checkin.videoUrl)) {
+        // 远程视频无法确认已清理，不写“已删除”标记，保留待人工处理。
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[homework.cleanExpiredVideos] 远程视频需人工清理:',
+          checkin.videoUrl,
+        );
+        continue;
+      }
+
+      const localPath = this.resolveLocalUpload(checkin.videoUrl);
+      if (localPath && existsSync(localPath)) {
+        try {
+          unlinkSync(localPath);
+          deletedFiles += 1;
+        } catch (error) {
+          // 删除失败时保留 videoDeletedAt 为空，下一轮继续重试。
+          // eslint-disable-next-line no-console
+          console.error(
+            '[homework.cleanExpiredVideos] 本地视频删除失败:',
+            localPath,
+            error,
+          );
+          continue;
         }
       }
 
@@ -205,6 +240,18 @@ export class HomeworkService {
     });
 
     return { scanned: expired.length, cleaned, deletedFiles };
+  }
+
+  /** 每日 02:00 自动清理 7 天前到期的打卡视频。 */
+  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  async cleanExpiredVideosCron(): Promise<void> {
+    await this.cleanExpiredVideos();
+  }
+
+  private isLocalVideoUrl(videoUrl: string): boolean {
+    return (
+      videoUrl.startsWith('/api/uploads/') || videoUrl.startsWith('/uploads/')
+    );
   }
 
   private resolveLocalUpload(videoUrl: string): string | null {

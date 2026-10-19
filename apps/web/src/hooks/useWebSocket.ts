@@ -35,6 +35,11 @@ export function useWebSocket(options: WebSocketOptions = {}) {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: 5,
+      auth: {
+        token:
+          (import.meta.env.VITE_SOCKET_TOKEN as string | undefined) ??
+          'vmi-tis-dev-token',
+      },
       query: {
         role: options.role ?? 'therapist',
         studentId: options.studentId ?? '',

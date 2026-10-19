@@ -35,8 +35,11 @@ if not exist "%ROOT%\node_modules" (
   if errorlevel 1 goto :failed
 )
 
-if not exist "%API_DIR%\dist\main.js" (
-  echo [初始化] 编译后端服务...
+set "NEED_BUILD="
+if not exist "%API_DIR%\dist\main.js" set "NEED_BUILD=1"
+if not exist "%ROOT%\apps\web\dist\index.html" set "NEED_BUILD=1"
+if defined NEED_BUILD (
+  echo [初始化] 编译后端与前端服务...
   call npm run build --prefix "%ROOT%"
   if errorlevel 1 goto :failed
 )

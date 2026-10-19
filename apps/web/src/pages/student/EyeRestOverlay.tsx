@@ -9,7 +9,7 @@ interface EyeRestOverlayProps {
 
 /**
  * 15 分钟数字训练硬锁遮罩：
- * 全屏不可跳过，必须教师解锁或完成 20 秒远眺休息。
+ * 全屏不可跳过；20 秒远眺只关闭遮罩，重置额度必须由教师授权码完成。
  */
 export function EyeRestOverlay({
   open,
@@ -56,11 +56,11 @@ export function EyeRestOverlay({
           onClick={onRestFinished}
           className="rounded-xl border border-white/20 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40"
         >
-          {remaining > 0 ? `休息结束（${remaining}s）` : '休息结束，继续训练'}
+          {remaining > 0 ? `休息结束（${remaining}s）` : '休息结束，关闭遮罩'}
         </button>
       </div>
       <p className="mt-6 text-[11px] text-slate-500">
-        解锁后数字护眼额度重置为 900 秒；请优先切换实体操作卡训练。
+        教师授权码解锁会将额度重置为 900 秒；20 秒远眺只关闭遮罩，不重置额度。
       </p>
     </div>
   );

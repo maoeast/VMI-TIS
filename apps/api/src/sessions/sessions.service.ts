@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -37,6 +38,9 @@ export class SessionsService {
     if (!student) {
       throw new NotFoundException('学生不存在');
     }
+
+    // 训练入口统一要求绿区：红区、回执待审核、待初筛均不得开始训练。
+    this.assertTrainingAllowed(student.triageStatus);
 
     const sopCard = dto.sopCardId
       ? await this.prisma.sopCard.findUnique({ where: { id: dto.sopCardId } })
@@ -138,17 +142,28 @@ export class SessionsService {
 
   async recordTrial(id: string, dto: RecordTrialDto) {
     const session = await this.findOne(id);
+    this.assertTrainingAllowed(session.student.triageStatus);
 
     if (session.isFinished) {
       throw new BadRequestException('本次课已结课，不能继续记分');
     }
 
-    if (dto.isDigital && session.digitalDurationSec >= DIGITAL_LIMIT_SEC) {
+    const digitalDelta = dto.digitalSeconds ?? 0;
+    const nextDigitalDurationSec = session.digitalDurationSec + digitalDelta;
+
+    if (
+      dto.isDigital &&
+      (session.digitalDurationSec >= DIGITAL_LIMIT_SEC ||
+        nextDigitalDurationSec > DIGITAL_LIMIT_SEC)
+    ) {
       throw new ForbiddenException({
         statusCode: 403,
         message:
-          '本次课数字训练时长已达 15 分钟上限，请切换至实体操作卡训练',
-        remainingQuotaSec: 0,
+          '本次课数字训练时长将达到 15 分钟上限，请切换至实体操作卡训练',
+        remainingQuotaSec: Math.max(
+          0,
+          DIGITAL_LIMIT_SEC - session.digitalDurationSec,
+        ),
       });
     }
 
@@ -166,16 +181,32 @@ export class SessionsService {
 
     const passCount = trials.filter((item) => item.result === 'pass').length;
     const accuracyRate = trials.length > 0 ? passCount / trials.length : 0;
-    const digitalDurationSec =
-      session.digitalDurationSec + (dto.digitalSeconds ?? 0);
+    const digitalDurationSec = Math.min(
+      DIGITAL_LIMIT_SEC,
+      nextDigitalDurationSec,
+    );
 
-    const updated = await this.prisma.trainingSession.update({
-      where: { id },
+    // 以旧 trialsJson 作为乐观锁条件：并发追加时只有一个请求能成功，
+    // 另一个得到 409，不会互相覆盖或算错正确率。
+    const updateResult = await this.prisma.trainingSession.updateMany({
+      where: {
+        id,
+        trialsJson: session.trialsJson,
+        isFinished: false,
+      },
       data: {
         trialsJson: JSON.stringify(trials),
         accuracyRate,
         digitalDurationSec,
       },
+    });
+
+    if (updateResult.count === 0) {
+      throw new ConflictException('本次课次已被其他请求更新，请刷新后重试');
+    }
+
+    const updated = await this.prisma.trainingSession.findUniqueOrThrow({
+      where: { id },
     });
 
     this.eventEmitter.emit('session.trial.recorded', {
@@ -209,11 +240,25 @@ export class SessionsService {
 
   async addDigitalDuration(id: string, dto: DigitalDurationDto) {
     const session = await this.findOne(id);
-    const digitalDurationSec = session.digitalDurationSec + dto.seconds;
+    this.assertTrainingAllowed(session.student.triageStatus);
 
-    const updated = await this.prisma.trainingSession.update({
-      where: { id },
+    // 累计值硬顶 900 秒，不允许同步接口把额度写成 990。
+    const digitalDurationSec = Math.min(
+      DIGITAL_LIMIT_SEC,
+      session.digitalDurationSec + Math.max(0, dto.seconds),
+    );
+
+    const updateResult = await this.prisma.trainingSession.updateMany({
+      where: { id, digitalDurationSec: session.digitalDurationSec },
       data: { digitalDurationSec },
+    });
+
+    if (updateResult.count === 0) {
+      throw new ConflictException('数字训练时长已被其他请求更新，请重试');
+    }
+
+    const updated = await this.prisma.trainingSession.findUniqueOrThrow({
+      where: { id },
     });
 
     return {
@@ -224,7 +269,12 @@ export class SessionsService {
     };
   }
 
-  async resetDigitalLimit(id: string, authorizedBy: string) {
+  async resetDigitalLimit(id: string, authorizationCode: string) {
+    const expectedCode = process.env.DIGITAL_RESET_CODE ?? '0808';
+    if (authorizationCode !== expectedCode) {
+      throw new ForbiddenException('教师授权码错误，无法重置数字训练额度');
+    }
+
     const session = await this.findOne(id);
 
     const updated = await this.prisma.trainingSession.update({
@@ -237,7 +287,10 @@ export class SessionsService {
       targetType: 'session',
       targetId: id,
       changesBefore: { digitalDurationSec: session.digitalDurationSec },
-      changesAfter: { digitalDurationSec: 0, authorizedBy },
+      changesAfter: {
+        digitalDurationSec: 0,
+        authorizedBy: 'teacher-authorized',
+      },
     });
 
     return {
@@ -249,6 +302,7 @@ export class SessionsService {
 
   async digitalStart(id: string) {
     const session = await this.findOne(id);
+    this.assertTrainingAllowed(session.student.triageStatus);
     return {
       sessionId: id,
       allowed: session.digitalDurationSec < DIGITAL_LIMIT_SEC,
@@ -310,6 +364,21 @@ export class SessionsService {
     return { session: updated, promotion };
   }
 
+  private assertTrainingAllowed(triageStatus: string): void {
+    if (triageStatus === 'GREEN_ACTIVE') {
+      return;
+    }
+
+    const pending = triageStatus === 'PENDING_SCREENING';
+    throw new ForbiddenException({
+      statusCode: 403,
+      message: pending
+        ? '学生尚未完成入案初筛，暂不能开始训练'
+        : '学生处于红区/回执待审核状态，禁止开始训练',
+      code: pending ? 'TRIAGE_PENDING' : 'RED_ZONE_LOCKED',
+    });
+  }
+
   private async findCardForLevel(level: string) {
     const exact = await this.prisma.sopCard.findFirst({
       where: { cardLevel: level },
@@ -320,8 +389,9 @@ export class SessionsService {
       return exact;
     }
 
-    // 契约库没有 L4 专属卡：优先向下取最近层级（L4 → L3），再向上取。
-    const order = ['L0', 'L1', 'L2', 'L3', 'L5'];
+    // 契约库没有 L4 专属卡：把 L4 放进逻辑层级表，
+    // 先向下取最近层级（L4 → L3），再向上取。
+    const order = ['L0', 'L1', 'L2', 'L3', 'L4', 'L5'];
     const index = order.indexOf(level);
 
     for (let cursor = index; cursor >= 0; cursor -= 1) {

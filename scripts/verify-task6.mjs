@@ -25,6 +25,9 @@ function connect(role, studentId) {
   return new Promise((resolve, reject) => {
     const socket = io(ORIGIN, {
       transports: ['websocket', 'polling'],
+      auth: {
+        token: process.env.SOCKET_TOKEN ?? 'vmi-tis-dev-token',
+      },
       query: { role, studentId },
       timeout: 5000,
     });
@@ -89,6 +92,53 @@ async function main() {
     '教师端收到 Pad 回合回传 PAD_TRIAL_COMPLETED',
     trialPayload.accuracyRate === 0.9 && trialPayload.gameMode === 'bubble',
     JSON.stringify(trialPayload),
+  );
+
+  const anonymous = io(ORIGIN, {
+    transports: ['websocket', 'polling'],
+    query: { role: 'therapist' },
+    reconnection: false,
+    timeout: 2000,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  check('无 token 连接被拒绝', !anonymous.connected, '匿名连接仍然存活');
+  anonymous.disconnect();
+
+  let forbiddenSwitchReceived = false;
+  therapist.on('SWITCH_PAD_TASK', () => {
+    forbiddenSwitchReceived = true;
+  });
+  studentSocket.emit('SWITCH_PAD_TASK', {
+    event: 'SWITCH_PAD_TASK',
+    studentId: student.id,
+    gameMode: 'bubble',
+    difficulty: { speed: 1, trajectory: 'sine', promptFade: 'slow' },
+    remainingEyeQuotaSec: 900,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  check(
+    '学生端不能冒充教师切换任务',
+    forbiddenSwitchReceived === false,
+    '学生端发出的 SWITCH_PAD_TASK 被广播',
+  );
+
+  let forgedTrialReceived = false;
+  therapist.on('PAD_TRIAL_COMPLETED', () => {
+    forgedTrialReceived = true;
+  });
+  studentSocket.emit('PAD_TRIAL_COMPLETED', {
+    event: 'PAD_TRIAL_COMPLETED',
+    studentId: '00000000-0000-0000-0000-000000000000',
+    gameMode: 'bubble',
+    accuracyRate: 1,
+    avgReactionTimeMs: 900,
+    smoothPursuitGain: 1,
+  });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  check(
+    '学生端不能伪造他人 Pad 回传',
+    forgedTrialReceived === false,
+    '伪造 PAD_TRIAL_COMPLETED 被广播',
   );
 
   const sessionsResponse = await fetch(

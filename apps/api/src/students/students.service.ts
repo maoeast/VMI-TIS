@@ -117,15 +117,6 @@ export class StudentsService {
       ...(dto.schoolScene !== undefined
         ? { schoolScene: dto.schoolScene.trim() }
         : {}),
-      ...(dto.currentLevel !== undefined
-        ? { currentLevel: dto.currentLevel }
-        : {}),
-      ...(dto.triageStatus !== undefined
-        ? { triageStatus: dto.triageStatus }
-        : {}),
-      ...(dto.promotionStatus !== undefined
-        ? { promotionStatus: dto.promotionStatus }
-        : {}),
       ...(dto.primaryTherapistId !== undefined
         ? { primaryTherapistId: dto.primaryTherapistId.trim() }
         : {}),
@@ -154,8 +145,15 @@ export class StudentsService {
       throw new BadRequestException('请上传 .xlsx 或 .csv 文件');
     }
 
-    const workbook = new ExcelJS.Workbook();
     const extension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!extension || !['xlsx', 'csv'].includes(extension)) {
+      throw new BadRequestException('仅支持 .xlsx 或 .csv 文件');
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      throw new BadRequestException('文件不能超过 5MB');
+    }
+
+    const workbook = new ExcelJS.Workbook();
 
     try {
       if (extension === 'csv') {
@@ -166,8 +164,9 @@ export class StudentsService {
         await workbook.xlsx.load(file.buffer as any);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new BadRequestException(`文件解析失败：${message}`);
+      // eslint-disable-next-line no-console
+      console.error('[students.importExcel] 文件解析失败:', error);
+      throw new BadRequestException('文件格式无法解析，请使用标准模板后重试');
     }
 
     const worksheet = query.sheetName
@@ -176,6 +175,9 @@ export class StudentsService {
 
     if (!worksheet) {
       throw new BadRequestException('未找到可读取的工作表');
+    }
+    if (worksheet.rowCount > 501) {
+      throw new BadRequestException('单次导入不能超过 500 行');
     }
 
     const headerMap = new Map<string, number>();
@@ -249,8 +251,16 @@ export class StudentsService {
         });
         imported += 1;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        errors.push({ row: rowNumber, reason: message });
+        // 解析/数据库原始错误只写服务端日志，不回传给客户端。
+        // eslint-disable-next-line no-console
+        console.error(
+          `[students.importExcel] 第 ${rowNumber} 行写入失败:`,
+          error,
+        );
+        errors.push({
+          row: rowNumber,
+          reason: '该行数据不合法或学号冲突',
+        });
       }
     }
 

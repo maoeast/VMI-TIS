@@ -54,7 +54,7 @@ export class AuditLogInterceptor implements NestInterceptor {
             action: metadata.action,
             targetType: metadata.targetType,
             targetId,
-            changesAfter: response,
+            changesAfter: summarizeAuditPayload(response, request),
           });
         } catch (error) {
           // 审计失败不应吞掉已经成功的业务写入，但必须留下可排查的痕迹。
@@ -66,4 +66,36 @@ export class AuditLogInterceptor implements NestInterceptor {
       }),
     );
   }
+}
+
+/**
+ * 审计只保留必要标识、状态变化与字段名，避免把姓名、电话、主诉等
+ * 完整档案快照复制进 audit_logs。
+ */
+function summarizeAuditPayload(
+  response: unknown,
+  request: Request,
+): Record<string, unknown> {
+  const record =
+    response && typeof response === 'object' && !Array.isArray(response)
+      ? (response as Record<string, unknown>)
+      : {};
+  const body =
+    request.body &&
+    typeof request.body === 'object' &&
+    !Array.isArray(request.body)
+      ? (request.body as Record<string, unknown>)
+      : {};
+
+  return {
+    id: record.id,
+    studentCode: record.studentCode,
+    currentLevel: record.currentLevel,
+    triageStatus: record.triageStatus,
+    promotionStatus: record.promotionStatus,
+    imported: record.imported,
+    failed: record.failed,
+    deleted: record.deleted,
+    changedFields: Object.keys(body),
+  };
 }

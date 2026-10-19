@@ -65,6 +65,37 @@ async function main() {
     (item) => item.studentCode === 'VMI-2026002',
   );
   check('找到陈果果', Boolean(target), 'VMI-2026002 不存在');
+  if (!target) {
+    process.exitCode = 1;
+    return;
+  }
+
+  const existingSessions = await call(`/sessions?studentId=${target.id}`);
+  const existingHomework = await call(
+    `/homework-checkins?studentId=${target.id}`,
+  );
+  const fresh =
+    target.currentLevel === 'L1' &&
+    target.promotionStatus === 'IN_PROGRESS' &&
+    existingSessions.body.length === 0 &&
+    existingHomework.body.length === 0;
+  check(
+    '测试库为全新状态（陈果果 L1/训练中/无课次/无作业）',
+    fresh,
+    JSON.stringify({
+      level: target.currentLevel,
+      promotion: target.promotionStatus,
+      sessions: existingSessions.body?.length,
+      homework: existingHomework.body?.length,
+    }),
+  );
+  if (!fresh) {
+    console.error(
+      'Task 4 需要全新测试库；请重建 SQLite 并重新 seed 后运行。',
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   const cards = await call('/sop-cards?level=L1');
   check(
@@ -74,6 +105,22 @@ async function main() {
   );
   const cardA = cards.body[0];
   const cardB = cards.body[1];
+
+  const l4Student = students.body.items.find(
+    (item) =>
+      item.currentLevel === 'L4' && item.triageStatus === 'GREEN_ACTIVE',
+  );
+  if (l4Student) {
+    const l4Session = await post('/sessions', { studentId: l4Student.id });
+    check(
+      'L4 学生无专属卡时回退到 L3',
+      l4Session.status === 201 && l4Session.body.sopCard?.cardLevel === 'L3',
+      JSON.stringify({
+        status: l4Session.status,
+        cardLevel: l4Session.body?.sopCard?.cardLevel,
+      }),
+    );
+  }
 
   const iep = await post('/iep-plans', {
     studentId: target.id,
@@ -100,8 +147,26 @@ async function main() {
   });
   check('创建家庭作业返回 201', homework.status === 201, `status=${homework.status}`);
 
+  const videoForm = new FormData();
+  videoForm.append(
+    'file',
+    new Blob(['fake mp4'], { type: 'video/mp4' }),
+    'checkin.mp4',
+  );
+  const videoUpload = await call(
+    `/homework-checkins/${homework.body.id}/video`,
+    { method: 'POST', body: videoForm },
+  );
+  check(
+    '家长视频上传返回 /api/uploads URL',
+    videoUpload.status === 201 &&
+      typeof videoUpload.body.videoUrl === 'string' &&
+      videoUpload.body.videoUrl.startsWith('/api/uploads/'),
+    JSON.stringify(videoUpload),
+  );
+
   const checkin = await post(`/homework-checkins/${homework.body.id}/checkin`, {
-    videoUrl: '/uploads/demo-checkin.mp4',
+    videoUrl: videoUpload.body.videoUrl ?? '/uploads/demo-checkin.mp4',
     videoDurationSec: 42,
     parentNote: '今天独立完成了找袜子任务',
   });
@@ -179,6 +244,13 @@ async function main() {
     JSON.stringify(approved.body),
   );
 
+  const recheck = await call(`/promotions/${target.id}/check`);
+  check(
+    '审批后同一批课次不能再次晋级',
+    recheck.body.canPromote === false,
+    JSON.stringify(recheck.body),
+  );
+
   const digitalSession = await post('/sessions', {
     studentId: target.id,
     sopCardId: cardA.id,
@@ -219,6 +291,59 @@ async function main() {
     '超额后 digital-start 被护眼守卫拦截',
     blockedStart.status === 403,
     `status=${blockedStart.status}`,
+  );
+
+  const edgeSession = await post('/sessions', {
+    studentId: target.id,
+    sopCardId: cardA.id,
+  });
+  const edge899 = await post(`/sessions/${edgeSession.body.id}/trial`, {
+    result: 'pass',
+    promptLevel: 1,
+    isDigital: true,
+    digitalSeconds: 899,
+  });
+  check(
+    '899 秒数字 Trial 允许',
+    edge899.status === 201 && edge899.body.digitalDurationSec === 899,
+    JSON.stringify({ status: edge899.status, body: edge899.body }),
+  );
+  const edge901 = await post(`/sessions/${edgeSession.body.id}/trial`, {
+    result: 'pass',
+    promptLevel: 1,
+    isDigital: true,
+    digitalSeconds: 2,
+  });
+  check(
+    '899 秒后再加 2 秒被 403 拦截',
+    edge901.status === 403,
+    JSON.stringify({ status: edge901.status, body: edge901.body }),
+  );
+  const edgeAfter = await call(`/sessions/${edgeSession.body.id}`);
+  check(
+    '899+2 被拦截后累计仍为 899 秒',
+    edgeAfter.body.digitalDurationSec === 899,
+    `digitalDurationSec=${edgeAfter.body.digitalDurationSec}`,
+  );
+
+  const badReset = await post(
+    `/sessions/${digitalSession.body.id}/digital-reset`,
+    { authorizationCode: '0000' },
+  );
+  check(
+    '错误教师授权码不能重置额度',
+    badReset.status === 403,
+    `status=${badReset.status}`,
+  );
+
+  const goodReset = await post(
+    `/sessions/${digitalSession.body.id}/digital-reset`,
+    { authorizationCode: '0808' },
+  );
+  check(
+    '教师授权码可重置额度为 900 秒',
+    goodReset.status === 201 && goodReset.body.remainingQuotaSec === 900,
+    JSON.stringify({ status: goodReset.status, body: goodReset.body }),
   );
 
   const stage = await patch(`/sessions/${digitalSession.body.id}/stage`, {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 9+ 默认禁止明文 HTTP。本文件只为本机调试与模拟器放行明文；
+  如果 Pad 通过局域网 HTTP 访问 API，请把服务器 IP 加到下面的 domain-config，
+  例如 <domain includeSubdomains="false">192.168.1.100</domain>；
+  生产环境应改为 HTTPS 并删除这些例外。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>

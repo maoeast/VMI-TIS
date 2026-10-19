@@ -14,7 +14,9 @@ prisma/.generated/
 *.log
 npm-debug.log*
 
-# Local environment overrides (base .env is committed with the SQLite demo path)
+# Local environment (use .env.example; never commit real .env)
+.env
+**/.env
 .env.local
 .env.*.local
 

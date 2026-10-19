@@ -210,3 +210,22 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - ⏳ 便携 Node 运行时未打包。
 - ⏳ 眼动仪硬件桥接（60 Hz）与 Capacitor 原生插件（status-bar / text-to-speech / camera）未接入；当前为浏览器 Canvas + 触控/鼠标。
 - APK 连接医院服务器需在构建前设置 `VITE_API_BASE` / `VITE_SOCKET_URL`，示例见 `apps/web/.env.example`。
+
+## 2026-10-20 ChatGPT 评审修复
+
+外部评审见 `docs/chatgpt评审.md`，共 29 项（12 P0 / 15 P1 / 2 P2），代码/配置已逐项处理（设备验收见下）：
+
+- **R1 红区**：学生通用 `PATCH` 不再接受 `triageStatus` / `currentLevel` / `promotionStatus`；未闭环红区不能被空初筛解锁；回执上传与审核校验红区单、回执、当前状态并事务化；训练入口（开课、记分、数字时长、digital-start）与排课守卫统一要求 `GREEN_ACTIVE`；同关键词多次出现时按全部项目匹配。
+- **R2/R3/R4**：R2 连续 0 分状态键加入 `studentId + evalPhase`；晋级审批记录截止时间，只统计审批后完成的新课次，审批前重新核验；数字训练对本次增量做 900 秒硬顶，Trial 与数字时长使用旧值条件更新（冲突返回 409）；教师重置必须提供服务端授权码（`DIGITAL_RESET_CODE`，缺省 0808）；学生端 20 秒远眺只关闭遮罩，不重置本课额度。
+- **一致性与接口**：评估记录与学生 `currentLevel` 同事务；L4 缺 TVPS/Beery 时按“缺失=达标”进入 L4；L4 无专属卡回退 L3；Excel 导入限制 5MB / 500 行、固定业务错误、原始错误只写服务端日志；审计快照只保留标识/状态/字段名；家长视频改为真实上传（`POST /api/homework-checkins/:id/video`，100MB 视频限制，`/api/uploads` 静态托管），清理失败不写 `videoDeletedAt`，远程视频不谎报已清理；每日 02:00 Cron 自动清理；WebSocket 握手 token + 角色/学生归属校验；学生选择器在新建/导入/删除后刷新；盲操快捷键忽略按钮/链接焦点；Android 增加网络白名单与沉浸式全屏。
+- **构建/部署**：PostgreSQL Schema 只替换 datasource 的实际 `provider` 行并断言；Dockerfile 在 `npm ci` 前复制 `apps/web/package.json`，Alpine 安装 OpenSSL；`.dockerignore` 排除 `.env`；`start_standalone.bat` 同时检查 Web `dist/index.html`。
+- **验收**：新增 `scripts/run-verification.mjs`（每个任务全新隔离 SQLite + 3100 测试 API，跑完清理），并补充反例：PATCH 绕过、空初筛解锁、未上传回执审批、红区/待初筛开课、899+2、重复晋级、错误授权码、匿名 WebSocket、跨学生伪造 Pad 回传、L4 缺 TVPS、审计脱敏、视频上传。
+  - Task 2：31/31；Task 3：17/17；Task 4：40/40；Task 6：10/10。
+  - Docker：`deploy-api:latest` 构建通过；镜像内无 `apps/api/.env`；PostgreSQL 15 容器实测 `/api/health` 返回 `database:"postgresql"`，seed 6 名学生。
+
+### 剩余偏差 / 未验证
+
+- ⏳ Android 真机/模拟器验收与 APK 编译仍未执行；`network_security_config.xml` 需按实际局域网服务器 IP 添加例外。
+- ⏳ Kiosk 退出码锁（`startKiosk` / `stopKiosk` 插件）未实现，当前仅沉浸式全屏。
+- ⏳ 原有偏差仍在：无 RBAC、HTML 报告非 PDF、R2 进程内状态单实例、眼动仪 60Hz 桥接未接入、便携 Node 未打包。
+

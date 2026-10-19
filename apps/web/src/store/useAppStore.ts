@@ -7,11 +7,13 @@ interface AppState {
   activeTerminal: Terminal;
   activeWebPage: string;
   activeStudentId: string | null;
+  studentsVersion: number;
   iepDraftCards: string[];
   toast: { message: string; kind: ToastKind } | null;
   setTerminal: (terminal: Terminal) => void;
   setWebPage: (page: string) => void;
   setActiveStudent: (id: string | null) => void;
+  bumpStudentsVersion: () => void;
   addIepCard: (cardCode: string) => void;
   clearIepDraftCards: () => void;
   showToast: (message: string, kind?: ToastKind) => void;
@@ -24,11 +26,14 @@ export const useAppStore = create<AppState>((set) => ({
   activeTerminal: 'web',
   activeWebPage: 'home',
   activeStudentId: null,
+  studentsVersion: 0,
   iepDraftCards: [],
   toast: null,
   setTerminal: (terminal) => set({ activeTerminal: terminal }),
   setWebPage: (page) => set({ activeWebPage: page }),
   setActiveStudent: (id) => set({ activeStudentId: id }),
+  bumpStudentsVersion: () =>
+    set((state) => ({ studentsVersion: state.studentsVersion + 1 })),
   addIepCard: (cardCode) =>
     set((state) => ({
       iepDraftCards: state.iepDraftCards.includes(cardCode)

@@ -7,6 +7,7 @@ import { levelLabel } from '../utils/format';
 export function StudentSelector() {
   const activeStudentId = useAppStore((state) => state.activeStudentId);
   const setActiveStudent = useAppStore((state) => state.setActiveStudent);
+  const studentsVersion = useAppStore((state) => state.studentsVersion);
   const [students, setStudents] = useState<Student[]>([]);
 
   useEffect(() => {
@@ -38,9 +39,10 @@ export function StudentSelector() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-    // 只在首次挂载时加载；切换学生不重新拉列表。
+    // 首次挂载加载；新建/导入/删除学生后通过 studentsVersion 触发刷新。
+    // 切换学生本身不重新拉列表。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [studentsVersion]);
 
   return (
     <label className="flex items-center gap-2 text-xs text-teal-100">

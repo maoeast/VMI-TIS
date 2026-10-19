@@ -87,6 +87,19 @@ async function main() {
     `logs=${createAudit.body?.logs?.length}`,
   );
 
+  const createLog = createAudit.body.logs?.[0];
+  const createPayload =
+    typeof createLog?.changesAfterJson === 'string'
+      ? createLog.changesAfterJson
+      : JSON.stringify(createLog?.changesAfterJson ?? {});
+  check(
+    '审计快照不包含姓名/电话/主诉',
+    !createPayload.includes('测试新生') &&
+      !createPayload.includes('13800000000') &&
+      !createPayload.includes('运行验收脚本创建'),
+    createPayload.slice(0, 200),
+  );
+
   const filtered = await call('/students?level=L2&triageStatus=GREEN_ACTIVE');
   check(
     '按 level + triageStatus 筛选命中林小宇',
@@ -124,6 +137,80 @@ async function main() {
     '红区学生状态变为 RED_ZONE_LOCKED',
     zhangAfterTriage.body.triageStatus === 'RED_ZONE_LOCKED',
     `triageStatus=${zhangAfterTriage.body.triageStatus}`,
+  );
+
+  const statusBypass = await call(`/students/${zhang.id}`, {
+    method: 'PATCH',
+    headers: ACTOR_HEADERS,
+    body: JSON.stringify({ triageStatus: 'GREEN_ACTIVE' }),
+  });
+  const afterBypass = await call(`/students/${zhang.id}`);
+  check(
+    '通用 PATCH 不能修改 triageStatus',
+    statusBypass.status === 200 &&
+      afterBypass.body.triageStatus === 'RED_ZONE_LOCKED',
+    `status=${statusBypass.status}, triage=${afterBypass.body?.triageStatus}`,
+  );
+
+  const emptyTriage = await call('/assessments/triage', {
+    method: 'POST',
+    headers: ACTOR_HEADERS,
+    body: JSON.stringify({ studentId: zhang.id, behaviorItems: [] }),
+  });
+  check(
+    '未闭环红区不能被空初筛解锁',
+    emptyTriage.status === 409,
+    `status=${emptyTriage.status}, body=${JSON.stringify(emptyTriage.body)}`,
+  );
+
+  const earlyAudit = await call('/assessments/referral-audit', {
+    method: 'POST',
+    headers: ACTOR_HEADERS,
+    body: JSON.stringify({
+      referralId: redTriage.body.id,
+      auditStatus: 'APPROVED',
+      auditedBy: '陈明 (视光师)',
+    }),
+  });
+  check(
+    '未上传回执不能直接审核通过',
+    earlyAudit.status === 400,
+    `status=${earlyAudit.status}`,
+  );
+
+  const redSession = await call('/sessions', {
+    method: 'POST',
+    headers: ACTOR_HEADERS,
+    body: JSON.stringify({ studentId: zhang.id }),
+  });
+  check(
+    '红区学生创建课次返回 403',
+    redSession.status === 403,
+    `status=${redSession.status}, body=${JSON.stringify(redSession.body)}`,
+  );
+
+  const pendingSession = await call('/sessions', {
+    method: 'POST',
+    headers: ACTOR_HEADERS,
+    body: JSON.stringify({ studentId: created.body.id }),
+  });
+  check(
+    '待初筛学生创建课次返回 403 + TRIAGE_PENDING',
+    pendingSession.status === 403 &&
+      pendingSession.body.code === 'TRIAGE_PENDING',
+    `status=${pendingSession.status}, body=${JSON.stringify(pendingSession.body)}`,
+  );
+
+  const pendingSchedule = await call('/schedules', {
+    method: 'POST',
+    headers: ACTOR_HEADERS,
+    body: JSON.stringify({ studentId: created.body.id }),
+  });
+  check(
+    '待初筛学生排课返回 403 + TRIAGE_PENDING',
+    pendingSchedule.status === 403 &&
+      pendingSchedule.body.code === 'TRIAGE_PENDING',
+    `status=${pendingSchedule.status}, body=${JSON.stringify(pendingSchedule.body)}`,
   );
 
   const blocked = await call('/schedules', {

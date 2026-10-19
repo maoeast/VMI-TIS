@@ -36,8 +36,25 @@ export class PromotionCheckService {
   ): Promise<PromotionCheckResult> {
     await this.ensureStudentExists(studentId);
 
+    // 上一次晋级审批的时间点：只有它之后完成的课次才算新证据，
+    // 防止同一批 3 次课被反复用来晋级。
+    const lastApproval = await this.prisma.auditLog.findFirst({
+      where: {
+        action: AuditAction.APPROVE_PROMOTION,
+        targetType: 'student',
+        targetId: studentId,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
     const recentSessions = await this.prisma.trainingSession.findMany({
-      where: { studentId, isFinished: true },
+      where: {
+        studentId,
+        isFinished: true,
+        ...(lastApproval
+          ? { finishedAt: { gt: lastApproval.createdAt } }
+          : {}),
+      },
       orderBy: { sessionDate: 'desc' },
       take: 3,
     });
@@ -102,7 +119,7 @@ export class PromotionCheckService {
       });
 
       await this.auditLogService.log({
-        action: AuditAction.APPROVE_PROMOTION,
+        action: AuditAction.PROMOTION_READY,
         targetType: 'student',
         targetId: studentId,
         changesAfter: {
@@ -139,6 +156,12 @@ export class PromotionCheckService {
 
     if (student.promotionStatus !== 'PROMOTION_READY') {
       throw new BadRequestException('学生未处于待晋级状态');
+    }
+
+    // 审批时重新核验：待晋级状态可能已经过期，不能只信旧标记。
+    const check = await this.checkPromotionCriteria(studentId);
+    if (!check.canPromote) {
+      throw new BadRequestException(check.reason ?? '晋级条件未满足');
     }
 
     const currentIndex = LEVEL_ORDER.indexOf(

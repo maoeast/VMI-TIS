@@ -74,6 +74,15 @@ export function StudentPadPage() {
     let cancelled = false;
 
     const load = async () => {
+      // 切换学生时先清空上一名学生的锁定/课次/游戏状态。
+      setLocked(false);
+      setOverlayOpen(false);
+      setSessionId(null);
+      setStudent(null);
+      setElapsed(0);
+      setStars(0);
+      setLastResult(null);
+
       if (!activeStudentId) {
         setLoading(false);
         return;
@@ -184,13 +193,16 @@ export function StudentPadPage() {
     [sessionId, activeStudentId, game, emitPadTrialCompleted],
   );
 
-  const unlock = async (authorizedBy: string) => {
+  const unlock = async (authorizationCode: string) => {
     if (!sessionId) {
       setOverlayOpen(false);
       return;
     }
     try {
-      const response = await sessionApi.resetDigital(sessionId, authorizedBy);
+      const response = await sessionApi.resetDigital(
+        sessionId,
+        authorizationCode,
+      );
       setRemainingQuota(response.remainingQuotaSec);
       setOverlayOpen(false);
       setElapsed(0);
@@ -198,6 +210,18 @@ export function StudentPadPage() {
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     }
+  };
+
+  const handleTeacherUnlock = () => {
+    const code = window.prompt('请输入教师授权码');
+    if (code) void unlock(code.trim());
+  };
+
+  const handleRestFinished = () => {
+    // 20 秒远眺只关闭遮罩，不重置本课累计额度：
+    // 下一次数字训练仍会被 403 拦截，必须由教师授权码重置。
+    setOverlayOpen(false);
+    showToast('已完成远眺休息；本课数字额度需教师授权码重置', 'info');
   };
 
   if (loading) {
@@ -325,14 +349,14 @@ export function StudentPadPage() {
         </div>
 
         <p className="mt-4 text-center text-[11px] text-teal-200/60">
-          本次课数字训练累计达到 900 秒后将强制全屏护眼休息，需教师授权或完成 20 秒远眺。
+          本次课数字训练累计达到 900 秒后将强制全屏护眼休息；20 秒远眺只关闭遮罩，重置额度需教师授权码。
         </p>
       </main>
 
       <EyeRestOverlay
         open={overlayOpen}
-        onUnlock={() => void unlock('周敏 (OT)')}
-        onRestFinished={() => void unlock('休息结束自动解锁')}
+        onUnlock={handleTeacherUnlock}
+        onRestFinished={handleRestFinished}
       />
     </div>
   );
