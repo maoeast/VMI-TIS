@@ -1,0 +1,207 @@
+// VMI-TIS 孤独症学生视觉运动整合训练干预系统
+// 双模数据库架构：SQLite（单机免安装）↔ PostgreSQL（医院服务器）零代码切换
+// 严禁使用 SQLite 不支持的语法：String[] 标量数组、@db.Timestamptz、原生 Json 类型
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // 交付模式1（默认单机免安装版）：provider = "sqlite", DATABASE_URL = "file:./data/vmi_tis.db"
+  // 交付模式2（医院Docker服务器版）：provider = "postgresql", DATABASE_URL = "postgresql://vmi:vmi2026@localhost:5432/vmi_tis"
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 表1：学生档案主表 ====================
+model Student {
+  id                 String   @id @default(uuid())
+  studentCode        String   @unique @map("student_code") // 如 VMI-2026001
+  name               String
+  gender             String?
+  birthDate          DateTime @map("birth_date")
+  schoolScene        String   @map("school_scene")         // 特教学校/康复机构/资源教室/门诊
+  currentLevel       String   @default("L0") @map("current_level") // L0~L5
+  triageStatus       String   @default("PENDING_SCREENING") @map("triage_status") // PENDING_SCREENING, RED_ZONE_LOCKED, REFERRAL_UPLOADED, GREEN_ACTIVE
+  promotionStatus    String   @default("IN_PROGRESS") @map("promotion_status")    // IN_PROGRESS, PROMOTION_READY
+  primaryTherapistId String   @map("primary_therapist_id")
+  parentPhone        String?  @map("parent_phone")
+  chiefComplaint     String?  @map("chief_complaint")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  triageReferrals    AssessmentTriageReferral[]
+  assessmentRecords  AssessmentRecord[]
+  iepPlans           IepPlan[]
+  trainingSessions   TrainingSession[]
+  homeworkCheckins   HomeworkCheckin[]
+
+  @@map("students")
+}
+
+// ==================== 表2：初筛问卷与眼科红区转介单 ====================
+model AssessmentTriageReferral {
+  id                String    @id @default(uuid())
+  studentId         String    @map("student_id")
+  behaviorItemsJson String    @map("behavior_items_json") // JSON数组字符串：[{item, score}]
+  redZoneItemsJson  String    @map("red_zone_items_json") // 命中的红区预警项JSON数组
+  isRedZone         Boolean   @default(false) @map("is_red_zone")
+  referralCode      String?   @map("referral_code")       // REF-20261012-08
+  hospitalName      String?   @map("hospital_name")
+  hospitalDiagnosis String?   @map("hospital_diagnosis")
+  receiptFileUrl    String?   @map("receipt_file_url")
+  auditStatus       String    @default("PENDING") @map("audit_status") // PENDING, APPROVED, REJECTED
+  auditedBy         String?   @map("audited_by")
+  auditedAt         DateTime? @map("audited_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  student           Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("assessments_triage_referrals")
+}
+
+// ==================== 表3：四层评估记录表（Beery VMI-6 / TVPS-4 / MVPT-3 / DEM / NPC / NSUCO）====================
+model AssessmentRecord {
+  id               String   @id @default(uuid())
+  studentId        String   @map("student_id")
+  evalPhase        String   @map("eval_phase") // BASELINE, STAGE_8W, TRANSITION
+  acuityLeft       String?  @map("acuity_left")
+  acuityRight      String?  @map("acuity_right")
+  refractionStatus String?  @map("refraction_status")
+  accomAmplitudeD  Float?   @map("accom_amplitude_d")
+  accomFacilityCpm Float?   @map("accom_facility_cpm")
+  npcCm            Float?   @map("npc_cm")
+  binocularTier    String?  @map("binocular_tier")
+  nsucoScoreJson   String?  @map("nsuco_score_json")        // JSON字符串：{pursuit, saccade, vergence}
+  beeryVmiRaw      Int?     @map("beery_vmi_raw")
+  beeryVmiStd      Int?     @map("beery_vmi_std")
+  beeryVpStd       Int?     @map("beery_vp_std")
+  beeryMcStd       Int?     @map("beery_mc_std")
+  tvps4Std         Int?     @map("tvps4_std")
+  mvpt3Std         Int?     @map("mvpt3_std")
+  demNormTier      String?  @map("dem_norm_tier")
+  radarScoresJson  String?  @map("radar_scores_json")       // 六维雷达图分数JSON字符串
+  autoLevel        String?  @map("auto_level")              // L0-L5 综合定级结果
+  reportFileUrl    String?  @map("report_file_url")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  student          Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, evalPhase])
+  @@map("assessment_records")
+}
+
+// ==================== 表4：13 张标准化操作卡（SOP Cards）====================
+model SopCard {
+  id                 String   @id @default(uuid())
+  cardCode           String   @unique @map("card_code")     // M1-1-1, M2-2-1, ...
+  cardLevel          String   @map("card_level")            // L0~L5
+  moduleName         String   @map("module_name")           // M1 身体准备与感统 / M2 双眼视与调节集合 / ...
+  cardTitle          String   @map("card_title")
+  targetSkill        String   @map("target_skill")
+  materialsJson      String   @map("materials_json")        // JSON数组字符串：["镊子", "珠子"]
+  procedureStepsJson String   @map("procedure_steps_json")  // 操作步骤JSON数组
+  passCriteria       String   @map("pass_criteria")         // 连续3次课 ≥80%
+  digitalGameMode    String?  @map("digital_game_mode")     // bubble / brock / star / null
+  parentTaskJson     String?  @map("parent_task_json")      // 家庭泛化任务JSON对象
+  cueTextJson        String?  @map("cue_text_json")         // TTS语音提示词JSON数组
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  iepPlans           IepPlan[]
+  trainingSessions   TrainingSession[]
+
+  @@map("sop_cards")
+}
+
+// ==================== 表5：IEP 个别化训练计划表 ====================
+model IepPlan {
+  id                  String   @id @default(uuid())
+  studentId           String   @map("student_id")
+  planPhase           Int      @default(1) @map("plan_phase")        // 第几阶段（每8周为一阶段）
+  targetLevel         String   @map("target_level")                  // L2 → L3
+  weeklyFrequency     Int      @default(3) @map("weekly_frequency")  // 每周3次
+  sessionMinutes      Int      @default(35) @map("session_minutes")  // 每次35分钟
+  digitalLimitMin     Int      @default(15) @map("digital_limit_min") // 数字训练≤15分钟
+  selectedCardsJson   String   @map("selected_cards_json")           // JSON数组：["M2-3-1", "M2-3-2"]
+  weeklyScheduleJson  String   @map("weekly_schedule_json")          // 周课表JSON
+  homeworkFrequency   Int      @default(5) @map("homework_frequency") // 家庭作业每周5天
+  status              String   @default("ACTIVE") @map("status")     // ACTIVE, COMPLETED, PAUSED
+  approvedBy          String?  @map("approved_by")
+  approvedAt          DateTime? @map("approved_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  student             Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sopCards            SopCard  @relation(fields: [selectedCardsJson], references: [cardCode])
+
+  @@index([studentId, status])
+  @@map("iep_plans")
+}
+
+// ==================== 表6：课堂训练回合记分表（五段式30-40分钟）====================
+model TrainingSession {
+  id                  String   @id @default(uuid())
+  studentId           String   @map("student_id")
+  sopCardId           String   @map("sop_card_id")
+  sessionDate         DateTime @map("session_date")
+  sessionNumber       Int      @map("session_number")              // 第18次课
+  currentStage        Int      @default(1) @map("current_stage")  // 1~5 五段式环节
+  trialsJson          String   @map("trials_json")                 // JSON数组：[{result:'pass', promptLevel:2}]
+  accuracyRate        Float    @default(0.0) @map("accuracy_rate") // 本次课正确率
+  digitalDurationSec  Int      @default(0) @map("digital_duration_sec") // 累计数字训练时长（秒）
+  therapistNotes      String?  @map("therapist_notes")
+  emotionStatus       String?  @map("emotion_status")              // ENGAGED, RESISTANT, FATIGUED
+  isFinished          Boolean  @default(false) @map("is_finished")
+  finishedAt          DateTime? @map("finished_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  student             Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sopCard             SopCard  @relation(fields: [sopCardId], references: [id])
+
+  @@index([studentId, sessionDate])
+  @@map("training_sessions")
+}
+
+// ==================== 表7：家庭作业打卡表（含7天自动清理）====================
+model HomeworkCheckin {
+  id                  String    @id @default(uuid())
+  studentId           String    @map("student_id")
+  taskName            String    @map("task_name")             // 找袜子泛化 / 聚散球练习
+  assignedDate        DateTime  @map("assigned_date")
+  dueDate             DateTime  @map("due_date")
+  status              String    @default("PENDING") @map("status") // PENDING, COMPLETED, OVERDUE
+  videoUrl            String?   @map("video_url")
+  videoDurationSec    Int?      @map("video_duration_sec")
+  parentNote          String?   @map("parent_note")
+  submittedAt         DateTime? @map("submitted_at")
+  teacherReply        String?   @map("teacher_reply")
+  repliedAt           DateTime? @map("replied_at")
+  scheduledDeleteAt   DateTime? @map("scheduled_delete_at")  // submittedAt + 7天
+  videoDeletedAt      DateTime? @map("video_deleted_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  student             Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, status])
+  @@index([scheduledDeleteAt]) // Cron 定时清理索引
+  @@map("homework_checkins")
+}
+
+// ==================== 表8：医疗合规操作审计日志（WHO/WHEN/WHAT）====================
+model AuditLog {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  userName          String   @map("user_name")
+  userRole          String   @map("user_role")          // OT / PT / OPTOMETRIST / TEACHER / ADMIN
+  action            String                              // CREATE_STUDENT, IMPORT_EXCEL, RED_ZONE_LOCK, UNLOCK_RED_ZONE, APPROVE_PROMOTION, CRON_CLEAN_VIDEOS
+  targetType        String   @map("target_type")        // student / assessment / iep / session / homework
+  targetId          String   @map("target_id")
+  changesBeforeJson String?  @map("changes_before_json") // 兼容 SQLite 与 PostgreSQL 的 JSON 字符串
+  changesAfterJson  String?  @map("changes_after_json")
+  ipAddress         String?  @map("ip_address")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([targetId, action])
+  @@map("audit_logs")
+}
