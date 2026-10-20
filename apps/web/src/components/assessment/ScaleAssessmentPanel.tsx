@@ -1,7 +1,15 @@
+import { useEffect, useRef, useState } from 'react';
+import { MonitorUp, X } from 'lucide-react';
+import type {
+  AssessmentCardChangePayload,
+  AssessmentCardType,
+} from '@vmi-tis/shared-types';
+import { TVPS_4_SUBTESTS } from '@vmi-tis/shared-types/assessment-seed';
 import type { ScaleScoreResponse } from '../../api/client';
+import { useAppStore } from '../../store/useAppStore';
 import { BeeryVmiCard } from './BeeryVmiCard';
-import { DemMatrix } from './DemMatrix';
-import { Tvps4Card } from './Tvps4Card';
+import { DemMatrix, type DemTest } from './DemMatrix';
+import { Tvps4Card, type Tvps4Phase } from './Tvps4Card';
 import {
   RecordNumberField,
   type AssessmentRecordForm,
@@ -13,6 +21,34 @@ interface FieldProps {
   onFieldChange: (field: NumericRecordField, value: string) => void;
 }
 
+/** 单个评估卡的远程出示控制（按钮状态由面板统一给出）。 */
+interface RemoteControl {
+  /** 当前正在学生端出示的就是这张卡。 */
+  active: boolean;
+  /** 没有当前学生或教师 socket 未连接时为 true。 */
+  disabled: boolean;
+  onShow: () => void;
+}
+
+/**
+ * 按子测验与样例题计算呈现阶段：种子里标了 `exposureTimeSec` 的记忆题先呈现
+ * 目标图形（倒计时），其余直接进选项。教师端与卡片内部共用这一条规则。
+ */
+function tvpsPhaseFor(
+  subtestCode: string,
+  itemIndex: number,
+): { phase: Tvps4Phase; remaining: number } {
+  const subtest =
+    TVPS_4_SUBTESTS.find((entry) => entry.subtestCode === subtestCode) ??
+    TVPS_4_SUBTESTS[0];
+  const item =
+    subtest.sampleDigitalItems[itemIndex] ?? subtest.sampleDigitalItems[0];
+  const exposure = item?.exposureTimeSec ?? null;
+  return exposure && exposure > 0
+    ? { phase: 'target', remaining: exposure }
+    : { phase: 'options', remaining: 0 };
+}
+
 interface BeerySectionProps extends FieldProps {
   scaleResult: ScaleScoreResponse | null;
   beeryItemNumber: number;
@@ -22,6 +58,7 @@ interface BeerySectionProps extends FieldProps {
   onScore: (score: 0 | 1) => void;
   onResetScale: () => void;
   onConfirmRawScore: () => void;
+  remote: RemoteControl;
 }
 
 function BeerySection({
@@ -35,6 +72,7 @@ function BeerySection({
   onScore,
   onResetScale,
   onConfirmRawScore,
+  remote,
 }: BeerySectionProps) {
   const shouldTerminate = Boolean(scaleResult?.shouldTerminate);
   const zeroCount = scaleResult?.consecutiveZeroCount ?? 0;
@@ -51,9 +89,15 @@ function BeerySection({
             分触发 R2 自动中止。完成后点「确认原始分」，把本轮累计原始分写入记录原始分，仍可手工修改。
           </p>
         </div>
-        <span className="badge bg-teal-100 text-teal-800">
-          本题卡读取种子 BEERY_VMI_6_ITEMS
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="badge bg-teal-100 text-teal-800">
+            本题卡读取种子 BEERY_VMI_6_ITEMS
+          </span>
+          <RemoteShowButton
+            remote={remote}
+            label={`第 ${beeryItemNumber} 题`}
+          />
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -157,19 +201,77 @@ function BeerySection({
   );
 }
 
-function TvpsSection({ form, onFieldChange }: FieldProps) {
+/** 「远程出示」按钮：已出示时提示点此重发，socket 或学生缺失时禁用。 */
+function RemoteShowButton({
+  remote,
+  label,
+}: {
+  remote: RemoteControl;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn-secondary inline-flex items-center gap-1"
+      disabled={remote.disabled}
+      onClick={remote.onShow}
+      title={remote.disabled ? '需要先选择学生且教师端实时通道已连接' : label}
+    >
+      <MonitorUp className="h-4 w-4" />
+      {remote.active ? '已出示 · 重发' : '远程出示'}
+    </button>
+  );
+}
+
+function TvpsSection({
+  form,
+  onFieldChange,
+  remote,
+  subtestCode,
+  itemIndex,
+  phase,
+  remaining,
+  onSubtestCodeChange,
+  onItemIndexChange,
+  onPhaseChange,
+  onRemainingChange,
+}: FieldProps & {
+  remote: RemoteControl;
+  subtestCode: string;
+  itemIndex: number;
+  phase: Tvps4Phase;
+  remaining: number;
+  onSubtestCodeChange: (code: string) => void;
+  onItemIndexChange: (index: number) => void;
+  onPhaseChange: (phase: Tvps4Phase) => void;
+  onRemainingChange: (remaining: number) => void;
+}) {
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-bold text-slate-800">
-        第四步：TVPS-4 视觉感知（样例题卡 + 手工原始分）
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        种子文件只为 7 个子测验各提供 1 道代表性样例题卡，不包含 18
-        题完整题库，因此系统不逐题判分、不伪造题目。请按官方题册施测后，在下方手工录入 7
-        项原始分（0–18）。
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">
+            第四步：TVPS-4 视觉感知（样例题卡 + 手工原始分）
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            种子文件只为 7 个子测验各提供 1 道代表性样例题卡，不包含 18
+            题完整题库，因此系统不逐题判分、不伪造题目。请按官方题册施测后，在下方手工录入 7
+            项原始分（0–18）。
+          </p>
+        </div>
+        <RemoteShowButton remote={remote} label="TVPS-4 样例题卡" />
+      </div>
       <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <Tvps4Card />
+        <Tvps4Card
+          subtestCode={subtestCode}
+          onSubtestCodeChange={onSubtestCodeChange}
+          itemIndex={itemIndex}
+          onItemIndexChange={onItemIndexChange}
+          phase={phase}
+          onPhaseChange={onPhaseChange}
+          remaining={remaining}
+          onRemainingChange={onRemainingChange}
+        />
         <div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <RecordNumberField
@@ -233,18 +335,33 @@ function TvpsSection({ form, onFieldChange }: FieldProps) {
   );
 }
 
-function DemSection({ form, onFieldChange }: FieldProps) {
+function DemSection({
+  form,
+  onFieldChange,
+  remote,
+  test,
+  onTestChange,
+}: FieldProps & {
+  remote: RemoteControl;
+  test: DemTest;
+  onTestChange: (test: DemTest) => void;
+}) {
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-bold text-slate-800">
-        第四步：DEM 发育性眼动（刺激矩阵 + 手工原始用时）
-      </h2>
-      <p className="mt-1 text-xs text-slate-500">
-        用下方刺激矩阵完成 Test A / B / C 后录入用时与错误数；5
-        项全部填写才由服务端换算。
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">
+            第四步：DEM 发育性眼动（刺激矩阵 + 手工原始用时）
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            用下方刺激矩阵完成 Test A / B / C 后录入用时与错误数；5
+            项全部填写才由服务端换算。
+          </p>
+        </div>
+        <RemoteShowButton remote={remote} label={`DEM Test ${test}`} />
+      </div>
       <div className="mt-4 grid grid-cols-1 gap-5 xl:grid-cols-2">
-        <DemMatrix />
+        <DemMatrix test={test} onTestChange={onTestChange} />
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <RecordNumberField
             label="Test A 纵向（秒）"
@@ -351,8 +468,204 @@ export function ScaleAssessmentPanel({
   onResetScale,
   onConfirmRawScore,
 }: ScaleAssessmentPanelProps) {
+  const activeStudentId = useAppStore((state) => state.activeStudentId);
+  const emitAssessmentCard = useAppStore(
+    (state) => state.teacherEmitAssessmentCard,
+  );
+
+  // 远程出示状态只在第 4 步页面内有效，不进全局 store。
+  const [showing, setShowing] = useState<{
+    cardType: AssessmentCardType;
+    studentId: string;
+  } | null>(null);
+  // TVPS-4 当前题卡状态由面板持有：教师翻子测验/题、5 秒倒计时推进阶段都在
+  // 这里算，再随远程出示发给学生端（学生端只读展示，不自行改阶段）。
+  const [tvpsSubtestCode, setTvpsSubtestCode] = useState<string>(
+    TVPS_4_SUBTESTS[0].subtestCode,
+  );
+  const [tvpsItemIndex, setTvpsItemIndex] = useState(0);
+  const [tvpsPhase, setTvpsPhase] = useState<Tvps4Phase>('options');
+  const [tvpsRemaining, setTvpsRemaining] = useState(0);
+  const [demTest, setDemTest] = useState<DemTest>('A');
+
+  // 正在出示的卡只在「出示时的学生 === 当前学生」时有效；切学生后自动作废。
+  const showingCardType =
+    showing && showing.studentId === activeStudentId
+      ? showing.cardType
+      : null;
+
+  const buildPayload = (
+    cardType: AssessmentCardType,
+    studentId: string,
+  ): AssessmentCardChangePayload => {
+    if (cardType === 'beery') {
+      return {
+        event: 'ASSESSMENT_CARD_CHANGE',
+        studentId,
+        action: 'show',
+        cardType,
+        beeryItemNumber,
+      };
+    }
+    if (cardType === 'tvps4') {
+      return {
+        event: 'ASSESSMENT_CARD_CHANGE',
+        studentId,
+        action: 'show',
+        cardType,
+        tvpsSubtestCode,
+        tvpsItemIndex,
+        tvpsPhase,
+        tvpsRemaining,
+      };
+    }
+    return {
+      event: 'ASSESSMENT_CARD_CHANGE',
+      studentId,
+      action: 'show',
+      cardType,
+      demTest,
+    };
+  };
+
+  const hide = () => {
+    if (!activeStudentId || !emitAssessmentCard) return;
+    emitAssessmentCard({
+      event: 'ASSESSMENT_CARD_CHANGE',
+      studentId: activeStudentId,
+      action: 'hide',
+      cardType: null,
+    });
+    setShowing(null);
+  };
+
+  const show = (cardType: AssessmentCardType) => {
+    if (!activeStudentId || !emitAssessmentCard) return;
+    if (showingCardType === cardType) {
+      // 同一张卡已在出示：状态没变、下面的 effect 不会重跑，「重发」直接发一次。
+      emitAssessmentCard(buildPayload(cardType, activeStudentId));
+      return;
+    }
+    setShowing({ cardType, studentId: activeStudentId });
+  };
+
+  // 出示后切题、翻子测验、倒计时推进阶段都自动重发；含 TVPS 每秒剩余秒数，
+  // 学生端按 `tvpsRemaining` 展示倒计时。学生端不补发历史帧。
+  useEffect(() => {
+    if (!showingCardType || !activeStudentId || !emitAssessmentCard) return;
+    emitAssessmentCard(buildPayload(showingCardType, activeStudentId));
+    // buildPayload 由上面这些状态拼装，依赖已逐一列出。
+  }, [
+    showingCardType,
+    activeStudentId,
+    emitAssessmentCard,
+    beeryItemNumber,
+    tvpsSubtestCode,
+    tvpsItemIndex,
+    tvpsPhase,
+    tvpsRemaining,
+    demTest,
+  ]);
+
+  // 切学生：收起远程卡（旧学生的卡不跟到新学生）。
+  useEffect(() => {
+    setShowing(null);
+  }, [activeStudentId]);
+
+  // 离开第 4 步（组件卸载）时收回，避免学生端停在一张没人收的卡上。
+  const showingRef = useRef(showing);
+  showingRef.current = showing;
+  const emitRef = useRef(emitAssessmentCard);
+  emitRef.current = emitAssessmentCard;
+  useEffect(
+    () => () => {
+      const current = showingRef.current;
+      const emit = emitRef.current;
+      if (current && emit) {
+        emit({
+          event: 'ASSESSMENT_CARD_CHANGE',
+          studentId: current.studentId,
+          action: 'hide',
+          cardType: null,
+        });
+      }
+    },
+    [],
+  );
+
+  const changeTvpsSubtest = (code: string) => {
+    const next = tvpsPhaseFor(code, 0);
+    setTvpsSubtestCode(code);
+    setTvpsItemIndex(0);
+    setTvpsPhase(next.phase);
+    setTvpsRemaining(next.remaining);
+  };
+
+  const changeTvpsItem = (index: number) => {
+    const next = tvpsPhaseFor(tvpsSubtestCode, index);
+    setTvpsItemIndex(index);
+    setTvpsPhase(next.phase);
+    setTvpsRemaining(next.remaining);
+  };
+
+  const remoteDisabled = !activeStudentId || !emitAssessmentCard;
+  const remoteFor = (cardType: AssessmentCardType): RemoteControl => ({
+    active: showingCardType === cardType,
+    disabled: remoteDisabled,
+    onShow: () => show(cardType),
+  });
+
+  const tvpsSubtest =
+    TVPS_4_SUBTESTS.find((entry) => entry.subtestCode === tvpsSubtestCode) ??
+    TVPS_4_SUBTESTS[0];
+  const showingLabel =
+    showingCardType === 'beery'
+      ? `Beery VMI-6 第 ${beeryItemNumber} 题`
+      : showingCardType === 'tvps4'
+        ? `TVPS-4 ${tvpsSubtest.nameCn} · 样例 ${tvpsItemIndex + 1} · ${
+            tvpsPhase === 'target' ? `记忆呈现 ${tvpsRemaining} 秒` : '选项'
+          }`
+        : showingCardType === 'dem'
+          ? `DEM Test ${demTest}`
+          : null;
+
   return (
     <div className="space-y-5">
+      <section className="card p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
+              <MonitorUp className="h-4 w-4 text-[#0F4C5C]" />
+              双屏评估出示
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              {showingLabel
+                ? `学生 Pad 正在显示：${showingLabel}；切题、翻子测验、换矩阵会自动跟随。`
+                : '未出示：学生 Pad 保持当前画面。点任一张卡的「远程出示」把题卡推到学生端。'}
+            </p>
+            {!activeStudentId && (
+              <p className="mt-1 text-xs text-amber-700">
+                请先在顶部选择学生，才能把题卡出示到学生 Pad。
+              </p>
+            )}
+            {!emitAssessmentCard && (
+              <p className="mt-1 text-xs text-amber-700">
+                教师端实时通道未连接（WebSocket 发送槽为空），出示按钮暂不可用。
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn-secondary inline-flex items-center gap-1"
+            disabled={!showingCardType || !emitAssessmentCard}
+            onClick={hide}
+          >
+            <X className="h-4 w-4" />
+            收回评估卡
+          </button>
+        </div>
+      </section>
+
       <BeerySection
         form={form}
         scaleResult={scaleResult}
@@ -364,9 +677,28 @@ export function ScaleAssessmentPanel({
         onScore={onScore}
         onResetScale={onResetScale}
         onConfirmRawScore={onConfirmRawScore}
+        remote={remoteFor('beery')}
       />
-      <TvpsSection form={form} onFieldChange={onFieldChange} />
-      <DemSection form={form} onFieldChange={onFieldChange} />
+      <TvpsSection
+        form={form}
+        onFieldChange={onFieldChange}
+        remote={remoteFor('tvps4')}
+        subtestCode={tvpsSubtestCode}
+        itemIndex={tvpsItemIndex}
+        phase={tvpsPhase}
+        remaining={tvpsRemaining}
+        onSubtestCodeChange={changeTvpsSubtest}
+        onItemIndexChange={changeTvpsItem}
+        onPhaseChange={setTvpsPhase}
+        onRemainingChange={setTvpsRemaining}
+      />
+      <DemSection
+        form={form}
+        onFieldChange={onFieldChange}
+        remote={remoteFor('dem')}
+        test={demTest}
+        onTestChange={setDemTest}
+      />
       <SupplementSection form={form} onFieldChange={onFieldChange} />
     </div>
   );

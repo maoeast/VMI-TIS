@@ -1,12 +1,17 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { Student } from '@vmi-tis/shared-types';
 import { studentApi } from '../api/client';
 import { useAppStore } from '../store/useAppStore';
 import { levelLabel } from '../utils/format';
 
 export function StudentSelector() {
+  const location = useLocation();
   const activeStudentId = useAppStore((state) => state.activeStudentId);
   const setActiveStudent = useAppStore((state) => state.setActiveStudent);
+  const teacherSwitchStudent = useAppStore(
+    (state) => state.teacherSwitchStudent,
+  );
   const studentsVersion = useAppStore((state) => state.studentsVersion);
   const [students, setStudents] = useState<Student[]>([]);
 
@@ -49,7 +54,15 @@ export function StudentSelector() {
       <span className="hidden sm:inline">当前学生</span>
       <select
         value={activeStudentId ?? ''}
-        onChange={(event) => setActiveStudent(event.target.value || null)}
+        onChange={(event) => {
+          const nextId = event.target.value || null;
+          // 本地先生效：学生端/家长端的这个下拉框只改本窗口当前学生。
+          setActiveStudent(nextId);
+          // 只有教师工作台把选择广播出去；发送槽为 null（无教师 socket）时静默跳过。
+          if (nextId && location.pathname.startsWith('/web')) {
+            teacherSwitchStudent?.(nextId);
+          }
+        }}
         className="rounded-lg border border-white/20 bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white outline-none focus:ring-2 focus:ring-teal-300"
       >
         {students.length === 0 && <option value="">暂无学生</option>}

@@ -49,6 +49,22 @@ function waitFor(socket, event, timeoutMs = 5000) {
   });
 }
 
+/** 发送事件并等待服务端 ack；服务端处理器返回值即 ack。 */
+function emitWithAck(socket, event, payload, timeoutMs = 3000) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`等待 ${event} ack 超时`)),
+      timeoutMs,
+    );
+    socket.emit(event, payload, (ack) => {
+      clearTimeout(timer);
+      resolve(ack);
+    });
+  });
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function main() {
   const studentsResponse = await fetch(
     `${ORIGIN}/api/students?pageSize=10`,
@@ -120,6 +136,212 @@ async function main() {
     '学生端不能冒充教师切换任务',
     forbiddenSwitchReceived === false,
     '学生端发出的 SWITCH_PAD_TASK 被广播',
+  );
+
+  // ---- SWITCH_STUDENT：跨窗口选学生同步 ----
+  const switchStudentPromise = waitFor(studentSocket, 'SWITCH_STUDENT');
+  const switchStudentAck = await emitWithAck(therapist, 'SWITCH_STUDENT', {
+    event: 'SWITCH_STUDENT',
+    studentId: student.id,
+  }).catch((error) => ({ transportError: String(error) }));
+  const switchStudentPayload = await switchStudentPromise;
+  check(
+    '教师端 SWITCH_STUDENT 返回 ok',
+    switchStudentAck?.ok === true,
+    JSON.stringify(switchStudentAck),
+  );
+  check(
+    '学生端收到教师选学生 SWITCH_STUDENT',
+    switchStudentPayload.studentId === student.id,
+    JSON.stringify(switchStudentPayload),
+  );
+
+  // 房间语义：学生 socket 仍在旧学生房间，教师选别的学生也必须送达，
+  // 证明服务端广播的是 role:student，而不是目标 student:<id>。
+  const otherStudent = students.items.find((item) => item.id !== student.id);
+  if (otherStudent) {
+    const otherPromise = waitFor(studentSocket, 'SWITCH_STUDENT');
+    await emitWithAck(therapist, 'SWITCH_STUDENT', {
+      event: 'SWITCH_STUDENT',
+      studentId: otherStudent.id,
+    });
+    const otherPayload = await otherPromise;
+    check(
+      '学生端在旧学生房间也能收到对其他学生的切换（role:student 广播）',
+      otherPayload.studentId === otherStudent.id,
+      JSON.stringify(otherPayload),
+    );
+  }
+
+  let studentSwitchBroadcast = false;
+  const spyStudentSwitch = () => {
+    studentSwitchBroadcast = true;
+  };
+  studentSocket.on('SWITCH_STUDENT', spyStudentSwitch);
+  const forbiddenSwitchStudentAck = await emitWithAck(
+    studentSocket,
+    'SWITCH_STUDENT',
+    { event: 'SWITCH_STUDENT', studentId: student.id },
+  ).catch((error) => ({ transportError: String(error) }));
+  await sleep(400);
+  studentSocket.off('SWITCH_STUDENT', spyStudentSwitch);
+  check(
+    '学生端发 SWITCH_STUDENT 返回 forbidden',
+    forbiddenSwitchStudentAck?.ok === false &&
+      forbiddenSwitchStudentAck?.error === 'forbidden',
+    JSON.stringify(forbiddenSwitchStudentAck),
+  );
+  check(
+    '学生端冒充教师的 SWITCH_STUDENT 未被广播',
+    studentSwitchBroadcast === false,
+    '学生端发出的 SWITCH_STUDENT 被广播',
+  );
+
+  const emptyStudentAck = await emitWithAck(therapist, 'SWITCH_STUDENT', {
+    event: 'SWITCH_STUDENT',
+    studentId: '',
+  }).catch((error) => ({ transportError: String(error) }));
+  check(
+    '空 studentId 返回 invalid_payload',
+    emptyStudentAck?.ok === false &&
+      emptyStudentAck?.error === 'invalid_payload',
+    JSON.stringify(emptyStudentAck),
+  );
+
+  // ---- ASSESSMENT_CARD_CHANGE：评估双屏出示 ----
+  const beeryCardPromise = waitFor(studentSocket, 'ASSESSMENT_CARD_CHANGE');
+  const beeryCardAck = await emitWithAck(therapist, 'ASSESSMENT_CARD_CHANGE', {
+    event: 'ASSESSMENT_CARD_CHANGE',
+    studentId: student.id,
+    action: 'show',
+    cardType: 'beery',
+    beeryItemNumber: 7,
+  }).catch((error) => ({ transportError: String(error) }));
+  const beeryCardPayload = await beeryCardPromise;
+  check(
+    '教师端 ASSESSMENT_CARD_CHANGE(Beery) 返回 ok',
+    beeryCardAck?.ok === true,
+    JSON.stringify(beeryCardAck),
+  );
+  check(
+    '学生端收到 Beery 题卡 show（题号跟随）',
+    beeryCardPayload.action === 'show' &&
+      beeryCardPayload.cardType === 'beery' &&
+      beeryCardPayload.beeryItemNumber === 7,
+    JSON.stringify(beeryCardPayload),
+  );
+
+  const tvpsCardPromise = waitFor(studentSocket, 'ASSESSMENT_CARD_CHANGE');
+  await emitWithAck(therapist, 'ASSESSMENT_CARD_CHANGE', {
+    event: 'ASSESSMENT_CARD_CHANGE',
+    studentId: student.id,
+    action: 'show',
+    cardType: 'tvps4',
+    tvpsSubtestCode: 'MEM',
+    tvpsItemIndex: 0,
+    tvpsPhase: 'target',
+    tvpsRemaining: 5,
+  }).catch((error) => ({ transportError: String(error) }));
+  const tvpsCardPayload = await tvpsCardPromise;
+  check(
+    '学生端收到 TVPS-4 题卡 show（子测验/阶段/剩余秒）',
+    tvpsCardPayload.action === 'show' &&
+      tvpsCardPayload.cardType === 'tvps4' &&
+      tvpsCardPayload.tvpsSubtestCode === 'MEM' &&
+      tvpsCardPayload.tvpsPhase === 'target' &&
+      tvpsCardPayload.tvpsRemaining === 5,
+    JSON.stringify(tvpsCardPayload),
+  );
+
+  const demCardPromise = waitFor(studentSocket, 'ASSESSMENT_CARD_CHANGE');
+  await emitWithAck(therapist, 'ASSESSMENT_CARD_CHANGE', {
+    event: 'ASSESSMENT_CARD_CHANGE',
+    studentId: student.id,
+    action: 'show',
+    cardType: 'dem',
+    demTest: 'C',
+  }).catch((error) => ({ transportError: String(error) }));
+  const demCardPayload = await demCardPromise;
+  check(
+    '学生端收到 DEM 矩阵 show（Test C）',
+    demCardPayload.action === 'show' &&
+      demCardPayload.cardType === 'dem' &&
+      demCardPayload.demTest === 'C',
+    JSON.stringify(demCardPayload),
+  );
+
+  const hideCardPromise = waitFor(studentSocket, 'ASSESSMENT_CARD_CHANGE');
+  const hideCardAck = await emitWithAck(therapist, 'ASSESSMENT_CARD_CHANGE', {
+    event: 'ASSESSMENT_CARD_CHANGE',
+    studentId: student.id,
+    action: 'hide',
+    cardType: null,
+  }).catch((error) => ({ transportError: String(error) }));
+  const hideCardPayload = await hideCardPromise;
+  check(
+    '教师端收回评估卡返回 ok 且学生端收到 hide',
+    hideCardAck?.ok === true && hideCardPayload.action === 'hide',
+    JSON.stringify({ ack: hideCardAck, payload: hideCardPayload }),
+  );
+
+  let studentCardBroadcast = false;
+  const spyStudentCard = () => {
+    studentCardBroadcast = true;
+  };
+  studentSocket.on('ASSESSMENT_CARD_CHANGE', spyStudentCard);
+  const forbiddenCardAck = await emitWithAck(
+    studentSocket,
+    'ASSESSMENT_CARD_CHANGE',
+    {
+      event: 'ASSESSMENT_CARD_CHANGE',
+      studentId: student.id,
+      action: 'show',
+      cardType: 'beery',
+      beeryItemNumber: 1,
+    },
+  ).catch((error) => ({ transportError: String(error) }));
+  await sleep(400);
+  studentSocket.off('ASSESSMENT_CARD_CHANGE', spyStudentCard);
+  check(
+    '学生端发 ASSESSMENT_CARD_CHANGE 返回 forbidden',
+    forbiddenCardAck?.ok === false && forbiddenCardAck?.error === 'forbidden',
+    JSON.stringify(forbiddenCardAck),
+  );
+  check(
+    '学生端冒充教师的评估卡出示未被广播',
+    studentCardBroadcast === false,
+    '学生端发出的 ASSESSMENT_CARD_CHANGE 被广播',
+  );
+
+  const emptyCardAck = await emitWithAck(therapist, 'ASSESSMENT_CARD_CHANGE', {
+    event: 'ASSESSMENT_CARD_CHANGE',
+    studentId: '',
+    action: 'show',
+    cardType: 'beery',
+    beeryItemNumber: 1,
+  }).catch((error) => ({ transportError: String(error) }));
+  check(
+    '评估卡空 studentId 返回 invalid_payload',
+    emptyCardAck?.ok === false && emptyCardAck?.error === 'invalid_payload',
+    JSON.stringify(emptyCardAck),
+  );
+
+  // 未知 studentId 不查存在性：服务端照发，学生端按 studentId 自行过滤。
+  const unknownStudentId = '00000000-0000-0000-0000-0000000000aa';
+  const unknownCardPromise = waitFor(studentSocket, 'ASSESSMENT_CARD_CHANGE');
+  const unknownCardAck = await emitWithAck(therapist, 'ASSESSMENT_CARD_CHANGE', {
+    event: 'ASSESSMENT_CARD_CHANGE',
+    studentId: unknownStudentId,
+    action: 'show',
+    cardType: 'beery',
+    beeryItemNumber: 2,
+  }).catch((error) => ({ transportError: String(error) }));
+  const unknownCardPayload = await unknownCardPromise;
+  check(
+    '未知 studentId 的评估卡照发到 role:student（学生端自行过滤）',
+    unknownCardAck?.ok === true &&
+      unknownCardPayload.studentId === unknownStudentId,
+    JSON.stringify({ ack: unknownCardAck, payload: unknownCardPayload }),
   );
 
   let forgedTrialReceived = false;

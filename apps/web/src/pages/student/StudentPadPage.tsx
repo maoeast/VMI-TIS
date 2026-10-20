@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { AssessmentCardChangePayload } from '@vmi-tis/shared-types';
 import {
   Circle,
   ClipboardCheck,
   Crosshair,
   Eye,
   LockKeyhole,
+  MonitorUp,
   Star,
   Timer,
 } from 'lucide-react';
@@ -16,9 +18,12 @@ import {
   studentApi,
   type StudentDetail,
 } from '../../api/client';
-import { useAppStore } from '../../store/useAppStore';
+import { TERMINAL_MODE, useAppStore } from '../../store/useAppStore';
 import { levelLabel } from '../../utils/format';
 import { AssessmentCardPanel } from '../../components/assessment/AssessmentCardPanel';
+import { BeeryVmiCard } from '../../components/assessment/BeeryVmiCard';
+import { DemMatrix } from '../../components/assessment/DemMatrix';
+import { Tvps4Card } from '../../components/assessment/Tvps4Card';
 import { BubbleGame } from './BubbleGame';
 import { BrockGame } from './BrockGame';
 import { CalibrationGame } from './CalibrationGame';
@@ -46,8 +51,60 @@ const GAME_LABELS: Record<GameKey, string> = {
   calibration: '眼动 5 点校准',
 };
 
+/**
+ * 学生端只读渲染教师端出示的评估卡：只吃种子索引（题号 / 子测验 / 阶段 / 矩阵），
+ * 不伪造题库、不本地翻题、不自行推进 TVPS 阶段；选项可点选但只在本机高亮。
+ */
+function RemoteAssessmentCard({ card }: { card: AssessmentCardChangePayload }) {
+  if (card.cardType === 'beery') {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#0F4C5C]">
+          <MonitorUp className="h-4 w-4" />
+          Beery VMI-6 · 第 {card.beeryItemNumber ?? 1} 题
+        </div>
+        <BeeryVmiCard itemNumber={card.beeryItemNumber ?? 1} readOnly />
+      </div>
+    );
+  }
+
+  if (card.cardType === 'tvps4') {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#0F4C5C]">
+          <MonitorUp className="h-4 w-4" />
+          TVPS-4 样例题卡 · 呈现与切题由教师端控制
+        </div>
+        <Tvps4Card
+          readOnly
+          revealAnswer={false}
+          subtestCode={card.tvpsSubtestCode ?? ''}
+          itemIndex={card.tvpsItemIndex ?? 0}
+          phase={card.tvpsPhase ?? 'options'}
+          remaining={card.tvpsRemaining ?? 0}
+        />
+      </div>
+    );
+  }
+
+  if (card.cardType === 'dem') {
+    return (
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#0F4C5C]">
+          <MonitorUp className="h-4 w-4" />
+          DEM 数字矩阵 · Test {card.demTest ?? 'A'}
+        </div>
+        <DemMatrix readOnly test={card.demTest ?? 'A'} />
+      </div>
+    );
+  }
+
+  return <p className="text-xs text-slate-400">教师端未指定题卡类型。</p>;
+}
+
 export function StudentPadPage() {
   const activeStudentId = useAppStore((state) => state.activeStudentId);
+  const setActiveStudent = useAppStore((state) => state.setActiveStudent);
   const showToast = useAppStore((state) => state.showToast);
   const navigate = useNavigate();
 
@@ -62,13 +119,36 @@ export function StudentPadPage() {
   const [stars, setStars] = useState(0);
   const [lastResult, setLastResult] = useState<'pass' | 'fail' | null>(null);
   const [mode, setMode] = useState<'training' | 'assessment'>('training');
+  /** 教师端经 `ASSESSMENT_CARD_CHANGE` 推到本机的评估卡；null 时显示本机出示面板。 */
+  const [assessmentCard, setAssessmentCard] =
+    useState<AssessmentCardChangePayload | null>(null);
 
   const { emitPadTrialCompleted } = useWebSocket({
     role: 'student',
     studentId: activeStudentId,
+    // 教师端选学生后广播到 role:student；本窗口跟随并把当前学生写回 store，
+    // hook 以新 studentId 重连，下面的 effect 负责清空旧状态并重载新学生。
+    onSwitchStudent: (payload) => {
+      setActiveStudent(payload.studentId);
+    },
+    // 评估双屏：只看发给本机当前学生的卡；收回即退出评估画面恢复训练。
+    // 学生端不自行改题/阶段，也不因收到未知 studentId 的卡而跳转。
+    onAssessmentCardChange: (payload) => {
+      if (!activeStudentId || payload.studentId !== activeStudentId) return;
+      if (payload.action === 'hide' || !payload.cardType) {
+        setAssessmentCard(null);
+        setMode('training');
+        return;
+      }
+      setAssessmentCard(payload);
+      setMode('assessment');
+    },
     onSwitchPadTask: (payload) => {
       setGame(payload.gameMode);
       setRemainingQuota(payload.remainingEyeQuotaSec);
+      // 新投屏任务优先：收起评估卡并回到训练画面。
+      setAssessmentCard(null);
+      setMode('training');
       showToast(`教师端已投屏切换：${GAME_LABELS[payload.gameMode]}`, 'info');
     },
   });
@@ -86,6 +166,7 @@ export function StudentPadPage() {
       setStars(0);
       setLastResult(null);
       setMode('training');
+      setAssessmentCard(null);
 
       if (!activeStudentId) {
         setLoading(false);
@@ -267,13 +348,19 @@ export function StudentPadPage() {
             {student?.name} 存在屈光参差 / 斜视 / 视力异常等红区指征。
             未完成眼科专科处置与回执审核前，禁止启动高负荷数字视觉训练。
           </p>
-          <button
-            type="button"
-            onClick={() => navigate('/web/assessment')}
-            className="mt-6 rounded-xl bg-white px-5 py-3 text-sm font-bold text-rose-900"
-          >
-            前往评估中心处理转介
-          </button>
+          {TERMINAL_MODE === 'all' ? (
+            <button
+              type="button"
+              onClick={() => navigate('/web/assessment')}
+              className="mt-6 rounded-xl bg-white px-5 py-3 text-sm font-bold text-rose-900"
+            >
+              前往评估中心处理转介
+            </button>
+          ) : (
+            <p className="mt-6 text-xs text-rose-100">
+              请让老师在教师端处理转介并上传回执；处理完成后重新进入。
+            </p>
+          )}
         </div>
       </div>
     );
@@ -302,9 +389,15 @@ export function StudentPadPage() {
             </div>
             <button
               type="button"
-              onClick={() =>
-                setMode(mode === 'training' ? 'assessment' : 'training')
-              }
+              onClick={() => {
+                if (mode === 'training') {
+                  // 本机出示优先（与远程卡 last-write-wins）：清掉远程卡回本机面板。
+                  setAssessmentCard(null);
+                  setMode('assessment');
+                  return;
+                }
+                setMode('training');
+              }}
               className="flex items-center gap-1.5 rounded-xl bg-teal-400/15 px-3 py-2 text-teal-200"
             >
               <ClipboardCheck className="h-4 w-4" />
@@ -328,20 +421,43 @@ export function StudentPadPage() {
           <div className="rounded-2xl bg-white p-4 text-slate-800">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="text-sm font-bold text-slate-800">评估题卡出示</h2>
+                <h2 className="text-sm font-bold text-slate-800">
+                  {assessmentCard ? '教师端出示的评估题卡' : '评估题卡出示'}
+                </h2>
                 <p className="text-xs text-slate-500">
-                  仅出示 Beery / TVPS-4 / DEM 题卡；不计数字额度、不记录 Trial、不改投屏模式。
+                  {assessmentCard
+                    ? '题卡由教师端控制；本机不计数字额度、不记录 Trial、不改投屏模式。'
+                    : '仅出示 Beery / TVPS-4 / DEM 题卡；不计数字额度、不记录 Trial、不改投屏模式。'}
                 </p>
               </div>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setMode('training')}
-              >
-                返回训练
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {assessmentCard && (
+                  <button
+                    type="button"
+                    className="btn-secondary inline-flex items-center gap-1"
+                    onClick={() => setAssessmentCard(null)}
+                  >
+                    <ClipboardCheck className="h-4 w-4" />
+                    改用本机出示
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setMode('training');
+                    setAssessmentCard(null);
+                  }}
+                >
+                  返回训练
+                </button>
+              </div>
             </div>
-            <AssessmentCardPanel revealAnswer={false} />
+            {assessmentCard ? (
+              <RemoteAssessmentCard card={assessmentCard} />
+            ) : (
+              <AssessmentCardPanel revealAnswer={false} />
+            )}
           </div>
         ) : (
           <>

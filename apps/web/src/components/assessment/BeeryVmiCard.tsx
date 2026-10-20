@@ -8,6 +8,8 @@ interface BeeryVmiCardProps {
   /** 传入后显示 1/0 判分按钮；不传时只看不出分。 */
   onScore?: (score: 0 | 1) => void;
   scoreDisabled?: boolean;
+  /** 只读出示（学生端远程卡）：隐藏题号选择器，题号由教师端决定。 */
+  readOnly?: boolean;
 }
 
 export function BeeryVmiCard({
@@ -15,6 +17,7 @@ export function BeeryVmiCard({
   onItemNumberChange,
   onScore,
   scoreDisabled = false,
+  readOnly = false,
 }: BeeryVmiCardProps) {
   const [internalItemNumber, setInternalItemNumber] = useState(1);
   const itemNumber = controlledItemNumber ?? internalItemNumber;
@@ -32,20 +35,26 @@ export function BeeryVmiCard({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <label className="text-xs font-semibold text-slate-600">
-          题号
-          <select
-            className="input mt-1 w-64"
-            value={itemNumber}
-            onChange={(event) => selectItemNumber(Number(event.target.value))}
-          >
-            {BEERY_VMI_6_ITEMS.map((entry) => (
-              <option key={entry.itemNumber} value={entry.itemNumber}>
-                {entry.itemNumber}. {entry.titleCn}
-              </option>
-            ))}
-          </select>
-        </label>
+        {readOnly ? (
+          <span className="badge bg-slate-100 text-slate-700">
+            第 {itemNumber} 题 · 由教师端出题
+          </span>
+        ) : (
+          <label className="text-xs font-semibold text-slate-600">
+            题号
+            <select
+              className="input mt-1 w-64"
+              value={itemNumber}
+              onChange={(event) => selectItemNumber(Number(event.target.value))}
+            >
+              {BEERY_VMI_6_ITEMS.map((entry) => (
+                <option key={entry.itemNumber} value={entry.itemNumber}>
+                  {entry.itemNumber}. {entry.titleCn}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <span className="badge bg-slate-100 text-slate-700">
           发展月龄 {item.developmentalAgeLabel}
         </span>
@@ -110,11 +119,13 @@ export function BeeryVmiCard({
         </div>
       )}
 
-      <p className="text-[11px] text-slate-400">
-        {onScore
-          ? '判分提交到 R2 连续 0 分计数；连续 3 题 0 分会自动中止本轮，原始分需点「确认原始分」后写入记录。'
-          : 'SVG 范图直接读取种子文件的 `svgRenderPaths`；本面板用于出示与对照，不自动计分。'}
-      </p>
+      {!readOnly && (
+        <p className="text-[11px] text-slate-400">
+          {onScore
+            ? '判分提交到 R2 连续 0 分计数；连续 3 题 0 分会自动中止本轮，原始分需点「确认原始分」后写入记录。'
+            : 'SVG 范图直接读取种子文件的 `svgRenderPaths`；本面板用于出示与对照，不自动计分。'}
+        </p>
+      )}
     </div>
   );
 }

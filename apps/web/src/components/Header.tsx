@@ -5,7 +5,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAppStore } from '../store/useAppStore';
+import { TERMINAL_MODE, useAppStore } from '../store/useAppStore';
 import { StudentSelector } from './StudentSelector';
 
 const TERMINALS = [
@@ -19,6 +19,8 @@ export function Header() {
   const location = useLocation();
   const setTerminal = useAppStore((state) => state.setTerminal);
   const activeTerminal = useAppStore((state) => state.activeTerminal);
+  // 只有 `all` 演示包保留三端切换；学生/教师/家长专用构建各用各的入口。
+  const showTerminalSwitcher = TERMINAL_MODE === 'all';
 
   const currentKey = location.pathname.startsWith('/student')
     ? 'student'
@@ -44,32 +46,34 @@ export function Header() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl bg-white/10 p-1">
-            {TERMINALS.map((terminal) => {
-              const Icon = terminal.icon;
-              const active =
-                currentKey === terminal.key ||
-                (terminal.key === 'web' && activeTerminal === 'web');
-              return (
-                <button
-                  key={terminal.key}
-                  type="button"
-                  onClick={() => {
-                    setTerminal(terminal.key);
-                    navigate(terminal.path);
-                  }}
-                  className={
-                    active
-                      ? 'flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#0F4C5C]'
-                      : 'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-100 hover:bg-white/10'
-                  }
-                >
-                  <Icon className="h-4 w-4" />
-                  {terminal.label}
-                </button>
-              );
-            })}
-          </div>
+          {showTerminalSwitcher && (
+            <div className="flex items-center gap-1 rounded-xl bg-white/10 p-1">
+              {TERMINALS.map((terminal) => {
+                const Icon = terminal.icon;
+                const active =
+                  currentKey === terminal.key ||
+                  (terminal.key === 'web' && activeTerminal === 'web');
+                return (
+                  <button
+                    key={terminal.key}
+                    type="button"
+                    onClick={() => {
+                      setTerminal(terminal.key);
+                      navigate(terminal.path);
+                    }}
+                    className={
+                      active
+                        ? 'flex items-center gap-1.5 rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-[#0F4C5C]'
+                        : 'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-teal-100 hover:bg-white/10'
+                    }
+                  >
+                    <Icon className="h-4 w-4" />
+                    {terminal.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <StudentSelector />
         </div>
       </div>

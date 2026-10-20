@@ -383,6 +383,39 @@ export interface SwitchPadTaskPayload {
   remainingEyeQuotaSec: number; // 剩余数字护眼额度（秒）
 }
 
+/** 教师端 → 学生端：跨窗口选学生同步（学生端跟随教师当前学生） */
+export interface SwitchStudentPayload {
+  event: 'SWITCH_STUDENT';
+  studentId: string;
+}
+
+/** 双屏评估出示的题卡类型（Beery VMI-6 / TVPS-4 / DEM 数字矩阵） */
+export type AssessmentCardType = 'beery' | 'tvps4' | 'dem';
+
+/**
+ * 教师端 → 学生端：评估题卡出示 / 翻题 / 收回（双屏评估）。
+ * 只传种子索引与阶段，不传渲染数据：学生端按 `cardType` 自行读取
+ * `BEERY_VMI_6_ITEMS` / `TVPS_4_SUBTESTS` / `DEM_STIMULUS_MATRICES`。
+ */
+export interface AssessmentCardChangePayload {
+  event: 'ASSESSMENT_CARD_CHANGE';
+  studentId: string;
+  action: 'show' | 'hide';
+  cardType: AssessmentCardType | null;
+  /** Beery 题号（1–30）。 */
+  beeryItemNumber?: number;
+  /** TVPS-4 子测验编码（DIS / MEM / SPA / CON / SEQ / FGR / CLO）。 */
+  tvpsSubtestCode?: string;
+  /** TVPS-4 样例题索引（0 起）。 */
+  tvpsItemIndex?: number;
+  /** TVPS-4 阶段：target 记忆呈现 → options 选项。 */
+  tvpsPhase?: 'target' | 'options';
+  /** TVPS-4 记忆呈现剩余秒数；学生端只展示，不自行推进阶段。 */
+  tvpsRemaining?: number;
+  /** DEM 矩阵测试项：A / B 纵列、C 横向。 */
+  demTest?: 'A' | 'B' | 'C';
+}
+
 /** 学生端 → 教师端：游戏回合完成 */
 export interface PadTrialCompletedPayload {
   event: 'PAD_TRIAL_COMPLETED';
