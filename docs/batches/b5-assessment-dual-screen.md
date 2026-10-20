@@ -3,9 +3,11 @@
 > 编制：主 agent · 2026-10-20 · 来源 = 用户 2026-10-20 21:37 开始里程碑 3（评估双屏）；沿用 b3 §4 授权：ccapi 设计 + 主代理核对 + DeepSeek 实施，不再逐版批准。。
 > 台账 = 无（本批未启用台账；项目无 PROJECT-MANIFEST.json）。前情 = docs/batches/b4-student-selection-sync.md。
 ## §1 讨论（主 agent）
-**状态行**：🔄 进行中（编码已落地；浏览器+平板联调通过；LAN 待 Windows API 更新；待提交）
+**状态行**：已收口 2026-10-20
 
 用户 2026-10-20 21:37 开始里程碑 3。范围：评估双屏——教师在 `/web/assessment` 翻题/出示评估卡（Beery SVG、TVPS 样例题卡 5s、DEM 矩阵）→ 学生端 `/student` 评估出示跟随；服务端角色校验；复用 b4 的 WS 基础设施；不改评估算分/R1/R2/R4 语义；不做 Tauri、RBAC、Kiosk、appId、b3/b4 提交。沿用 b3 §4 授权（ccapi 设计 + 主代理核对 + DeepSeek 实施，不再逐版批准）；commit/push 仍单独放行。b3/b4 未提交，b5 在其工作区上继续。
+
+> 不适用：§3 —— 本批设计由 ccapi 出稿、主代理核对，未单独派评审子代理。
 
 ## §2 批次任务与设计（主 agent）
 **状态行**：设计完成
