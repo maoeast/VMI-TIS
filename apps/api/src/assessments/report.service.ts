@@ -61,12 +61,17 @@ export class ReportService {
       mvpt3Std: number | null;
       demNormTier: string | null;
       radarScoresJson: string | null;
+      assessmentMetaJson: string | null;
       createdAt: Date;
       student: { name: string; studentCode: string; schoolScene: string };
     },
     generatedAt: string,
   ): string {
     const radar = this.parseJson(record.radarScoresJson);
+    const meta = this.parseJson(record.assessmentMetaJson);
+    const grading = this.asRecord(meta.grading);
+    const dem = this.asRecord(meta.dem);
+    const tvps4 = this.asRecord(meta.tvps4);
     const escape = (value: unknown): string =>
       String(value ?? '—')
         .replace(/&/g, '&amp;')
@@ -125,7 +130,11 @@ export class ReportService {
       .join('') || '<tr><td colspan="2">本次评估未录入六维分数</td></tr>'}
   </table>
 
-  <h2>四、训练处方建议</h2>
+  ${this.renderGradingSection(grading, escape)}
+  ${this.renderDemSection(dem, escape)}
+  ${this.renderTvps4Section(tvps4, escape)}
+
+  <h2>七、训练处方建议</h2>
   <p>建议每周 3–4 次、每次 35 分钟结构化训练；数字训练单次不超过 15 分钟，并配合每日 8–10 分钟家庭泛化练习。</p>
 
   <div class="footer">生成时间：${escape(generatedAt)} · 报告编号：${escape(record.id)}</div>
@@ -145,5 +154,65 @@ export class ReportService {
     } catch {
       return {};
     }
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  }
+
+  private renderGradingSection(
+    grading: Record<string, unknown>,
+    escape: (value: unknown) => string,
+  ): string {
+    if (Object.keys(grading).length === 0) {
+      return '<h2>四、评估结论与训练处方</h2><p>本记录创建于评估模块接入前，无详细定级分析。</p>';
+    }
+    const cards = Array.isArray(grading.recommendedSopCardCodes)
+      ? grading.recommendedSopCardCodes.join('、')
+      : '—';
+    return `<h2>四、评估结论与训练处方</h2>
+  <table>
+    <tr><th>推荐层级</th><td>${escape(grading.recommendedLevelLabel ?? grading.recommendedLevel)}</td></tr>
+    <tr><th>红区判定</th><td>${escape(grading.triageStatus)}</td></tr>
+    <tr><th>临床瓶颈分析</th><td>${escape(grading.clinicalBottleneckAnalysis)}</td></tr>
+    <tr><th>推荐操作卡</th><td>${escape(cards)}</td></tr>
+  </table>`;
+  }
+
+  private renderDemSection(
+    dem: Record<string, unknown>,
+    escape: (value: unknown) => string,
+  ): string {
+    if (Object.keys(dem).length === 0) {
+      return '<h2>五、DEM 眼动</h2><p>本次评估未录入 DEM。</p>';
+    }
+    return `<h2>五、DEM 眼动</h2>
+  <table>
+    <tr><th>纵向总用时</th><td>${escape(dem.verticalTotalSec)} s</td></tr>
+    <tr><th>横向修正用时</th><td>${escape(dem.horizontalAdjustedSec)} s</td></tr>
+    <tr><th>纵横比</th><td>${escape(dem.demRatio)}</td></tr>
+    <tr><th>行为分型</th><td>${escape(dem.behaviorType)}</td></tr>
+    <tr><th>结论</th><td>${escape(dem.summaryText)}</td></tr>
+  </table>`;
+  }
+
+  private renderTvps4Section(
+    tvps4: Record<string, unknown>,
+    escape: (value: unknown) => string,
+  ): string {
+    if (Object.keys(tvps4).length === 0) {
+      return '<h2>六、TVPS-4 子测验</h2><p>本次评估未录入 TVPS-4。</p>';
+    }
+    const scaled = this.asRecord(tvps4.scaledScores);
+    return `<h2>六、TVPS-4 子测验</h2>
+  <table>
+    <tr><th>综合标准分</th><td>${escape(tvps4.overallStandardScore)}</td></tr>
+    <tr><th>百分位</th><td>${escape(tvps4.overallPercentile)}</td></tr>
+    ${Object.entries(scaled)
+      .map(([key, value]) => `<tr><th>${escape(key)}</th><td>${escape(value)}</td></tr>`)
+      .join('')}
+  </table>`;
   }
 }

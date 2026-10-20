@@ -81,6 +81,7 @@ model AssessmentRecord {
   mvpt3Std         Int?     @map("mvpt3_std")
   demNormTier      String?  @map("dem_norm_tier")
   radarScoresJson  String?  @map("radar_scores_json")       // 六维雷达图分数JSON字符串
+  assessmentMetaJson String? @map("assessment_meta_json")   // 评估原始输入、常模换算、定级分析 JSON
   autoLevel        String?  @map("auto_level")              // L0-L5 综合定级结果
   reportFileUrl    String?  @map("report_file_url")
   createdAt        DateTime @default(now()) @map("created_at")

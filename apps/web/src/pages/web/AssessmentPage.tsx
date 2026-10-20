@@ -7,17 +7,32 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import type {
+  AssessmentMeta,
   AssessmentRecord,
   AssessmentTriageReferral,
 } from '@vmi-tis/shared-types';
 import {
+  BEHAVIOR_SCREENING_ITEMS,
+  MILESTONE_0_TO_6_CHECKLIST,
+  OPTOMETRY_NORMS,
+  RED_ZONE_TRIAGE_ITEMS,
+} from '@vmi-tis/shared-types/assessment-seed';
+import {
   assessmentApi,
   parseJson,
   resolveApiUrl,
+  studentApi,
   triageApi,
   type AssessmentRecordsResponse,
   type ScaleScoreResponse,
+  type StudentDetail,
 } from '../../api/client';
+import { AssessmentCardPanel } from '../../components/assessment/AssessmentCardPanel';
+import { NsucoPanel } from '../../components/assessment/NsucoPanel';
+import {
+  ScreeningForms,
+  type ScreeningSelection,
+} from '../../components/assessment/ScreeningForms';
 import { PageHeader } from '../../components/PageHeader';
 import { useAppStore } from '../../store/useAppStore';
 import {
@@ -29,34 +44,7 @@ import {
   triageLabel,
 } from '../../utils/format';
 
-type TabKey = 'scale' | 'triage' | 'records';
-
-const RED_ITEMS = [
-  {
-    key: 'refraction',
-    item: '屈光参差（左右眼度数差异）',
-    score: 2.5,
-    label: '屈光参差 ≥ 2.00D',
-  },
-  {
-    key: 'strabismus',
-    item: '交替遮盖试验见眼球明显移动（斜视阳性）',
-    score: 1,
-    label: '斜视 / 遮盖试验异常',
-  },
-  {
-    key: 'diplopia',
-    item: '看近物诉重影（复视）',
-    score: 1,
-    label: '复视 / 重影',
-  },
-  {
-    key: 'vision',
-    item: '裸眼视力异常、眯眼歪头视物、伴眼痛头痛或眼球震颤',
-    score: 1,
-    label: '视力异常 / 眼球震颤',
-  },
-];
+type TabKey = 'scale' | 'triage' | 'cards' | 'records';
 
 const EMPTY_RECORD_FORM = {
   npcCm: '',
@@ -65,9 +53,39 @@ const EMPTY_RECORD_FORM = {
   mvpt3Std: '',
   beeryVmiStd: '',
   beeryVmiRaw: '',
+  beeryVpStd: '',
+  beeryVpRaw: '',
+  beeryMcStd: '',
+  beeryMcRaw: '',
+  quadrupedHoldSec: '',
+  classroomCopyAccuracyPct: '',
+  tvpsDIS: '',
+  tvpsMEM: '',
+  tvpsSPA: '',
+  tvpsCON: '',
+  tvpsSEQ: '',
+  tvpsFGR: '',
+  tvpsCLO: '',
+  demAVerticalSec: '',
+  demBVerticalSec: '',
+  demCHorizontalSec: '',
+  demOmissionErrors: '',
+  demAdditionErrors: '',
   stabilityPass: true,
   classroomAdaptationPass: true,
+  nsucoPursuit: 3,
+  nsucoSaccade: 3,
 };
+
+function monthsBetween(birthDate: Date, now = new Date()): number {
+  let months =
+    (now.getFullYear() - birthDate.getFullYear()) * 12 +
+    (now.getMonth() - birthDate.getMonth());
+  if (now.getDate() < birthDate.getDate()) {
+    months -= 1;
+  }
+  return Math.max(0, months);
+}
 
 export function AssessmentPage() {
   const activeStudentId = useAppStore((state) => state.activeStudentId);
@@ -80,7 +98,13 @@ export function AssessmentPage() {
   const [recordForm, setRecordForm] = useState(EMPTY_RECORD_FORM);
   const [recordResult, setRecordResult] = useState<AssessmentRecord | null>(null);
 
-  const [selectedRed, setSelectedRed] = useState<Set<string>>(new Set());
+  const [student, setStudent] = useState<StudentDetail | null>(null);
+  const [screening, setScreening] = useState<ScreeningSelection>({
+    red: [],
+    milestones: [],
+    behaviors: [],
+  });
+  const [recordMeta, setRecordMeta] = useState<AssessmentMeta | null>(null);
   const [triageResult, setTriageResult] = useState<AssessmentTriageReferral | null>(null);
   const [referrals, setReferrals] = useState<AssessmentTriageReferral[]>([]);
   const [referralForms, setReferralForms] = useState<
@@ -108,11 +132,58 @@ export function AssessmentPage() {
     }
   };
 
+  const loadStudent = async () => {
+    if (!activeStudentId) {
+      setStudent(null);
+      return;
+    }
+    try {
+      setStudent(await studentApi.get(activeStudentId));
+    } catch {
+      setStudent(null);
+    }
+  };
+
   useEffect(() => {
+    setRecordResult(null);
+    setRecordMeta(null);
+    setRecordForm(EMPTY_RECORD_FORM);
+    setScreening({ red: [], milestones: [], behaviors: [] });
     void loadReferrals();
     void loadRecords();
+    void loadStudent();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStudentId]);
+
+  const updateRecordField = (
+    key: keyof typeof EMPTY_RECORD_FORM,
+    value: string | boolean | number,
+  ) => {
+    setRecordForm((prev) => ({ ...prev, [key]: value }) as typeof prev);
+  };
+
+  const numberOrUndefined = (value: string): number | undefined =>
+    value.trim() === '' ? undefined : Number(value);
+
+  const birthDate = student ? new Date(String(student.birthDate)) : undefined;
+  const ageMonths = birthDate ? monthsBetween(birthDate) : undefined;
+  const ageYears = ageMonths !== undefined ? ageMonths / 12 : undefined;
+
+  const numberField = (
+    key: keyof typeof EMPTY_RECORD_FORM,
+    label: string,
+  ) => (
+    <label key={key} className="text-xs font-semibold text-slate-600">
+      {label}
+      <input
+        type="number"
+        value={String(recordForm[key])}
+        onChange={(event) => updateRecordField(key, event.target.value)}
+        className="input mt-1"
+      />
+    </label>
+  );
+
 
   const submitScore = async (score: number) => {
     if (!activeStudentId) {
@@ -128,7 +199,9 @@ export function AssessmentPage() {
         score,
       });
       setScaleResult(result);
-      setItemIndex((value) => value + 1);
+      if (!result.shouldTerminate) {
+        setItemIndex((value) => value + 1);
+      }
       if (result.shouldTerminate) {
         showToast(result.message ?? '已触发连续 3 题 0 分中止', 'error');
       }
@@ -159,26 +232,70 @@ export function AssessmentPage() {
       showToast('请先在顶部选择学生', 'error');
       return;
     }
+    const tvps4RawScores =
+      recordForm.tvpsDIS !== '' &&
+      recordForm.tvpsMEM !== '' &&
+      recordForm.tvpsSPA !== '' &&
+      recordForm.tvpsCON !== '' &&
+      recordForm.tvpsSEQ !== '' &&
+      recordForm.tvpsFGR !== '' &&
+      recordForm.tvpsCLO !== ''
+        ? {
+            DIS: Number(recordForm.tvpsDIS),
+            MEM: Number(recordForm.tvpsMEM),
+            SPA: Number(recordForm.tvpsSPA),
+            CON: Number(recordForm.tvpsCON),
+            SEQ: Number(recordForm.tvpsSEQ),
+            FGR: Number(recordForm.tvpsFGR),
+            CLO: Number(recordForm.tvpsCLO),
+          }
+        : undefined;
+    const demRaw =
+      recordForm.demAVerticalSec !== '' &&
+      recordForm.demBVerticalSec !== '' &&
+      recordForm.demCHorizontalSec !== '' &&
+      recordForm.demOmissionErrors !== '' &&
+      recordForm.demAdditionErrors !== ''
+        ? {
+            testAVerticalSec: Number(recordForm.demAVerticalSec),
+            testBVerticalSec: Number(recordForm.demBVerticalSec),
+            testCHorizontalRawSec: Number(recordForm.demCHorizontalSec),
+            omissionErrors: Number(recordForm.demOmissionErrors),
+            additionErrors: Number(recordForm.demAdditionErrors),
+          }
+        : undefined;
+
     try {
       const record = await assessmentApi.createRecord({
         studentId: activeStudentId,
         evalPhase: 'BASELINE',
-        npcCm: recordForm.npcCm ? Number(recordForm.npcCm) : undefined,
-        accomFacilityCpm: recordForm.accomFacilityCpm
-          ? Number(recordForm.accomFacilityCpm)
-          : undefined,
-        tvps4Std: recordForm.tvps4Std ? Number(recordForm.tvps4Std) : undefined,
-        mvpt3Std: recordForm.mvpt3Std ? Number(recordForm.mvpt3Std) : undefined,
-        beeryVmiStd: recordForm.beeryVmiStd
-          ? Number(recordForm.beeryVmiStd)
-          : undefined,
-        beeryVmiRaw: recordForm.beeryVmiRaw
-          ? Number(recordForm.beeryVmiRaw)
-          : undefined,
+        npcCm: numberOrUndefined(recordForm.npcCm),
+        accomFacilityCpm: numberOrUndefined(recordForm.accomFacilityCpm),
+        tvps4Std: numberOrUndefined(recordForm.tvps4Std),
+        mvpt3Std: numberOrUndefined(recordForm.mvpt3Std),
+        beeryVmiStd: numberOrUndefined(recordForm.beeryVmiStd),
+        beeryVmiRaw: numberOrUndefined(recordForm.beeryVmiRaw),
+        beeryVpStd: numberOrUndefined(recordForm.beeryVpStd),
+        beeryVpRaw: numberOrUndefined(recordForm.beeryVpRaw),
+        beeryMcStd: numberOrUndefined(recordForm.beeryMcStd),
+        beeryMcRaw: numberOrUndefined(recordForm.beeryMcRaw),
+        tvps4RawScores,
+        demRaw,
+        quadrupedHoldSec: numberOrUndefined(recordForm.quadrupedHoldSec),
+        classroomCopyAccuracyPct: numberOrUndefined(
+          recordForm.classroomCopyAccuracyPct,
+        ),
+        nsucoScore: {
+          pursuit: recordForm.nsucoPursuit,
+          saccade: recordForm.nsucoSaccade,
+        },
         stabilityPass: recordForm.stabilityPass,
         classroomAdaptationPass: recordForm.classroomAdaptationPass,
       });
       setRecordResult(record);
+      setRecordMeta(
+        parseJson<AssessmentMeta | null>(record.assessmentMetaJson, null),
+      );
       showToast(`评估已保存，自动定级 ${record.autoLevel}`, 'success');
       await loadRecords();
     } catch (err) {
@@ -191,13 +308,32 @@ export function AssessmentPage() {
       showToast('请先在顶部选择学生', 'error');
       return;
     }
-    const behaviorItems = RED_ITEMS.filter((item) => selectedRed.has(item.key)).map(
-      (item) => ({ item: item.item, score: item.score }),
-    );
+    const redItems = RED_ZONE_TRIAGE_ITEMS.filter((item) =>
+      screening.red.includes(item.code),
+    ).map((item) => ({
+      item: item.label,
+      score: item.category === 'ACUITY_REFRACTION' ? 2.5 : 1,
+    }));
+    const milestoneItems = MILESTONE_0_TO_6_CHECKLIST.flatMap((group) =>
+      group.visualAndVmiMilestones.map((text, index) => ({
+        code: `${group.code}-${index}`,
+        text,
+      })),
+    )
+      .filter((entry) => screening.milestones.includes(entry.code))
+      .map((entry) => ({ item: `里程碑未达成：${entry.text}`, score: 1 }));
+    const behaviorItems = BEHAVIOR_SCREENING_ITEMS.filter((item) =>
+      screening.behaviors.includes(item.code),
+    ).map((item) => ({ item: item.question, score: 1 }));
+    const allBehaviorItems = [
+      ...redItems,
+      ...milestoneItems,
+      ...behaviorItems,
+    ];
     try {
       const result = await triageApi.submit({
         studentId: activeStudentId,
-        behaviorItems,
+        behaviorItems: allBehaviorItems,
         redZoneItems: [],
       });
       setTriageResult(result);
@@ -283,7 +419,7 @@ export function AssessmentPage() {
   };
 
   const lastThree = scaleResult?.lastThree ?? [];
-  const zeroCount = lastThree.filter((score) => score === 0).length;
+  const zeroCount = scaleResult?.consecutiveZeroCount ?? 0;
 
   return (
     <div>
@@ -302,7 +438,8 @@ export function AssessmentPage() {
         {[
           ['scale', '① 电子量表施测台'],
           ['triage', '② 初筛与红区转介'],
-          ['records', '③ 评估报告库'],
+          ['cards', '③ 量表题卡'],
+          ['records', '④ 评估报告库'],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -329,7 +466,8 @@ export function AssessmentPage() {
             <div className="mt-4 grid grid-cols-2 gap-3">
               <button
                 type="button"
-                className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 px-4 py-5 text-sm font-bold text-emerald-800 hover:bg-emerald-100"
+                disabled={scaleResult?.shouldTerminate}
+                className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 px-4 py-5 text-sm font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => void submitScore(1)}
               >
                 <ClipboardCheck className="mx-auto mb-1 h-5 w-5" />
@@ -337,7 +475,8 @@ export function AssessmentPage() {
               </button>
               <button
                 type="button"
-                className="rounded-2xl border-2 border-rose-300 bg-white px-4 py-5 text-sm font-bold text-rose-700 hover:bg-rose-50"
+                disabled={scaleResult?.shouldTerminate}
+                className="rounded-2xl border-2 border-rose-300 bg-white px-4 py-5 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
                 onClick={() => void submitScore(0)}
               >
                 <AlertTriangle className="mx-auto mb-1 h-5 w-5" />
@@ -348,6 +487,7 @@ export function AssessmentPage() {
             <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs">
               <span className="font-semibold text-slate-600">
                 第 {itemIndex} 题 · 本会话已提交 {scaleResult?.submittedItems ?? 0} 题
+                · 累计原始分 {scaleResult?.totalRawScore ?? 0}
               </span>
               <span
                 className={
@@ -382,6 +522,9 @@ export function AssessmentPage() {
               <div className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
                 <div className="font-bold">已自动中止本轮评估</div>
                 <p className="mt-1">{scaleResult.message}</p>
+                <p className="mt-1">
+                  中止时累计原始分：{scaleResult.totalRawScore}；请先记录该分数，再重置本轮。
+                </p>
               </div>
             )}
           </section>
@@ -389,56 +532,118 @@ export function AssessmentPage() {
           <section className="card p-5">
             <h2 className="text-sm font-bold text-slate-800">评估指标与自动定级</h2>
             <p className="mt-1 text-xs text-slate-500">
-              保存后按 L0–L5 算法回写学生当前层级。
+              原始分优先调用种子函数换算；留空时使用标准分或兼容缺省。保存后回写学生当前层级。
             </p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              {[
-                ['npcCm', 'NPC（cm）'],
-                ['accomFacilityCpm', '调节灵活度（cpm）'],
-                ['tvps4Std', 'TVPS-4 标准分'],
-                ['mvpt3Std', 'MVPT-3 标准分'],
-                ['beeryVmiStd', 'Beery VMI 标准分'],
-                ['beeryVmiRaw', 'Beery VMI 原始分'],
-              ].map(([key, label]) => (
-                <label key={key} className="text-xs font-semibold text-slate-600">
-                  {label}
-                  <input
-                    type="number"
-                    value={(recordForm as Record<string, string | boolean>)[key] as string}
-                    onChange={(event) =>
-                      setRecordForm((prev) => ({ ...prev, [key]: event.target.value }))
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <h3 className="text-xs font-bold text-slate-700">视光与眼动</h3>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  {numberField('npcCm', 'NPC（cm）')}
+                  {numberField('accomFacilityCpm', '调节灵活度（cpm）')}
+                  {numberField('tvps4Std', 'TVPS-4 标准分')}
+                  {numberField('mvpt3Std', 'MVPT-3 标准分')}
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  NPC 正常不高于 {OPTOMETRY_NORMS.npcCutoffCm.normalMax} cm，大于{' '}
+                  {OPTOMETRY_NORMS.npcCutoffCm.insufficiencyThreshold} cm 提示集合不足；
+                  调节灵活度正常不低于{' '}
+                  {OPTOMETRY_NORMS.accomFacilityCpmCutoff.normalMin} cpm，低于{' '}
+                  {OPTOMETRY_NORMS.accomFacilityCpmCutoff.lagThreshold} cpm 提示调节滞后。
+                  {ageYears !== undefined &&
+                    ` 该年龄最小预期调节幅度约 ${OPTOMETRY_NORMS.minExpectedAccomAmplitudeD(ageYears)} D。`}
+                </p>
+                <div className="mt-3">
+                  <NsucoPanel
+                    pursuit={recordForm.nsucoPursuit}
+                    saccade={recordForm.nsucoSaccade}
+                    onChange={(field, value) =>
+                      updateRecordField(
+                        field === 'pursuit' ? 'nsucoPursuit' : 'nsucoSaccade',
+                        value,
+                      )
                     }
-                    className="input mt-1"
                   />
-                </label>
-              ))}
+                </div>
+              </div>
+
+              <details open className="rounded-xl border border-slate-200 p-3">
+                <summary className="cursor-pointer text-xs font-bold text-slate-700">
+                  Beery VMI-6（原始分优先）
+                </summary>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  {numberField('beeryVmiRaw', '主测验原始分（0–30）')}
+                  {numberField('beeryVmiStd', '主测验标准分')}
+                  {numberField('beeryVpRaw', 'VP 补充原始分')}
+                  {numberField('beeryVpStd', 'VP 标准分')}
+                  {numberField('beeryMcRaw', 'MC 补充原始分')}
+                  {numberField('beeryMcStd', 'MC 标准分')}
+                </div>
+              </details>
+
+              <details className="rounded-xl border border-slate-200 p-3">
+                <summary className="cursor-pointer text-xs font-bold text-slate-700">
+                  TVPS-4 七项原始分（全部填写才换算）
+                </summary>
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {numberField('tvpsDIS', 'DIS')}
+                  {numberField('tvpsMEM', 'MEM')}
+                  {numberField('tvpsSPA', 'SPA')}
+                  {numberField('tvpsCON', 'CON')}
+                  {numberField('tvpsSEQ', 'SEQ')}
+                  {numberField('tvpsFGR', 'FGR')}
+                  {numberField('tvpsCLO', 'CLO')}
+                </div>
+              </details>
+
+              <details className="rounded-xl border border-slate-200 p-3">
+                <summary className="cursor-pointer text-xs font-bold text-slate-700">
+                  DEM 原始输入（全部填写才换算）
+                </summary>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {numberField('demAVerticalSec', 'Test A 纵向（秒）')}
+                  {numberField('demBVerticalSec', 'Test B 纵向（秒）')}
+                  {numberField('demCHorizontalSec', 'Test C 横向（秒）')}
+                  {numberField('demOmissionErrors', '漏读字数')}
+                  {numberField('demAdditionErrors', '多读字数')}
+                </div>
+              </details>
+
+              <div>
+                <h3 className="text-xs font-bold text-slate-700">稳定性与课堂应用</h3>
+                <div className="mt-2 space-y-2 text-xs">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={recordForm.stabilityPass}
+                      onChange={(event) =>
+                        updateRecordField('stabilityPass', event.target.checked)
+                      }
+                    />
+                    身体稳定 / 前庭本体评估达标
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={recordForm.classroomAdaptationPass}
+                      onChange={(event) =>
+                        updateRecordField(
+                          'classroomAdaptationPass',
+                          event.target.checked,
+                        )
+                      }
+                    />
+                    课堂抄写 / 文具使用补充评估达标
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {numberField('quadrupedHoldSec', '四点爬行维持（秒）')}
+                    {numberField('classroomCopyAccuracyPct', '课堂抄写正确率（%）')}
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="mt-3 space-y-2 text-xs">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={recordForm.stabilityPass}
-                  onChange={(event) =>
-                    setRecordForm((prev) => ({ ...prev, stabilityPass: event.target.checked }))
-                  }
-                />
-                身体稳定 / 前庭本体评估达标
-              </label>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={recordForm.classroomAdaptationPass}
-                  onChange={(event) =>
-                    setRecordForm((prev) => ({
-                      ...prev,
-                      classroomAdaptationPass: event.target.checked,
-                    }))
-                  }
-                />
-                课堂抄写 / 文具使用补充评估达标
-              </label>
-            </div>
-            <div className="mt-4 flex items-center justify-between">
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
               <button type="button" className="btn-primary" onClick={() => void saveRecord()}>
                 保存评估记录
               </button>
@@ -448,6 +653,26 @@ export function AssessmentPage() {
                 </span>
               )}
             </div>
+
+            {recordMeta && (
+              <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">
+                <div className="font-bold">
+                  {recordMeta.grading.recommendedLevelLabel}
+                </div>
+                <p className="mt-1">{recordMeta.grading.clinicalBottleneckAnalysis}</p>
+                <p className="mt-1">
+                  推荐操作卡：{recordMeta.grading.recommendedSopCardCodes.join('、')}
+                </p>
+                {recordMeta.dem && (
+                  <p className="mt-1">DEM：{recordMeta.dem.summaryText}</p>
+                )}
+                {recordMeta.tvps4 && (
+                  <p className="mt-1">
+                    TVPS-4 综合标准分：{recordMeta.tvps4.overallStandardScore}
+                  </p>
+                )}
+              </div>
+            )}
           </section>
         </div>
       )}
@@ -457,33 +682,14 @@ export function AssessmentPage() {
           <section className="card p-5">
             <h2 className="text-sm font-bold text-slate-800">入案第一层初筛</h2>
             <p className="mt-1 text-xs text-slate-500">
-              任一项命中即锁定训练并生成眼科转介单（规则 R1）。
+              红区、里程碑与行为筛查均读取种子常量；提交后由服务端重新计算 R1 红区。
             </p>
-            <div className="mt-4 space-y-2">
-              {RED_ITEMS.map((item) => (
-                <label
-                  key={item.key}
-                  className="flex cursor-pointer items-start gap-2 rounded-xl border border-rose-100 bg-rose-50/60 p-3 text-xs"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedRed.has(item.key)}
-                    onChange={(event) => {
-                      setSelectedRed((prev) => {
-                        const next = new Set(prev);
-                        if (event.target.checked) next.add(item.key);
-                        else next.delete(item.key);
-                        return next;
-                      });
-                    }}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-semibold text-rose-900">{item.label}</span>
-                    <span className="mt-0.5 block text-rose-700/80">{item.item}</span>
-                  </span>
-                </label>
-              ))}
+            <div className="mt-4">
+              <ScreeningForms
+                value={screening}
+                onChange={setScreening}
+                ageMonths={ageMonths}
+              />
             </div>
             <button type="button" className="btn-primary mt-4" onClick={() => void submitTriage()}>
               <ShieldAlert className="mr-1 inline h-4 w-4" />
@@ -575,6 +781,18 @@ export function AssessmentPage() {
             </div>
           </section>
         </div>
+      )}
+
+      {tab === 'cards' && (
+        <section className="card p-5">
+          <h2 className="text-sm font-bold text-slate-800">量表题卡</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Beery VMI-6 / TVPS-4 / DEM 题卡直接读取种子常量；教师端与学生端共用，出示不自动计分。
+          </p>
+          <div className="mt-4">
+            <AssessmentCardPanel />
+          </div>
+        </section>
       )}
 
       {tab === 'records' && (

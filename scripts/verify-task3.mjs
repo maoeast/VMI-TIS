@@ -2,6 +2,11 @@
 /**
  * Task 3 验收脚本：R2 连续 3 题 0 分中止、L0–L5 自动分级、评估记录分组、报告生成。
  */
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const seed = require('@vmi-tis/shared-types');
+
 const BASE = process.env.API_BASE ?? 'http://localhost:3000/api';
 const ORIGIN = BASE.replace(/\/api\/?$/, '');
 const failures = [];
@@ -28,6 +33,16 @@ async function call(path, options = {}) {
 }
 
 const JSON_HEADERS = { 'content-type': 'application/json' };
+
+function monthsBetween(birthDate, now = new Date()) {
+  let months =
+    (now.getFullYear() - birthDate.getFullYear()) * 12 +
+    (now.getMonth() - birthDate.getMonth());
+  if (now.getDate() < birthDate.getDate()) {
+    months -= 1;
+  }
+  return Math.max(0, months);
+}
 
 async function submitScore(studentId, score) {
   return call('/assessments/scale-score', {
@@ -61,6 +76,26 @@ async function main() {
   );
   check('找到林小宇', Boolean(lin), 'VMI-2026001 不存在');
 
+  const linDetail = await call(`/students/${lin.id}`);
+  const ageMonths = monthsBetween(new Date(linDetail.body.birthDate));
+  const ageYears = ageMonths / 12;
+
+  const initialReset = await call('/assessments/scale-score', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      studentId: lin.id,
+      evalPhase: 'BASELINE',
+      sessionId: 'verify-task3-session',
+      reset: true,
+    }),
+  });
+  check(
+    '初始 reset 清空会话',
+    initialReset.body.submittedItems === 0,
+    JSON.stringify(initialReset.body),
+  );
+
   const first = await submitScore(lin.id, 0);
   const second = await submitScore(lin.id, 0);
   const third = await submitScore(lin.id, 0);
@@ -81,12 +116,33 @@ async function main() {
       third.body.message.includes('连续 3 题'),
     `message=${third.body.message}`,
   );
-
-  const afterReset = await submitScore(lin.id, 0);
   check(
-    '中止后计数已清空，再次 0 分不立即中止',
-    afterReset.body.shouldTerminate === false,
-    `shouldTerminate=${afterReset.body.shouldTerminate}`,
+    '中止响应带 consecutiveZeroCount=3',
+    third.body.consecutiveZeroCount === 3,
+    `consecutiveZeroCount=${third.body.consecutiveZeroCount}`,
+  );
+  check(
+    '中止响应带 ceilingItemIndex=3',
+    third.body.ceilingItemIndex === 3,
+    `ceilingItemIndex=${third.body.ceilingItemIndex}`,
+  );
+  check(
+    '中止响应带 totalRawScore=0',
+    third.body.totalRawScore === 0,
+    `totalRawScore=${third.body.totalRawScore}`,
+  );
+
+  const afterTerminate = await submitScore(lin.id, 0);
+  check(
+    '中止后继续提交被拒绝且保留累计进度',
+    afterTerminate.body.shouldTerminate === true &&
+      afterTerminate.body.submittedItems === 3 &&
+      afterTerminate.body.totalRawScore === 0,
+    JSON.stringify({
+      shouldTerminate: afterTerminate.body.shouldTerminate,
+      submittedItems: afterTerminate.body.submittedItems,
+      totalRawScore: afterTerminate.body.totalRawScore,
+    }),
   );
 
   const reset = await call('/assessments/scale-score', {
@@ -100,6 +156,24 @@ async function main() {
     }),
   });
   check('reset=true 返回已重置', reset.body.submittedItems === 0, JSON.stringify(reset.body));
+
+  const afterReset = await submitScore(lin.id, 0);
+  check(
+    'reset 后可重新开始计分',
+    afterReset.body.shouldTerminate === false &&
+      afterReset.body.submittedItems === 1,
+    JSON.stringify(afterReset.body),
+  );
+  await call('/assessments/scale-score', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      studentId: lin.id,
+      evalPhase: 'BASELINE',
+      sessionId: 'verify-task3-session',
+      reset: true,
+    }),
+  });
 
   const l1 = await createRecord(lin.id, {
     stabilityPass: true,
@@ -174,11 +248,142 @@ async function main() {
     `status=${l4Missing.status}, level=${l4Missing.body?.autoLevel}`,
   );
 
+  const l4Beery = await createRecord(lin.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    tvps4Std: 95,
+    beeryVmiStd: 85,
+    classroomAdaptationPass: true,
+  });
+  check(
+    'Beery VMI=85（种子阈值 <90）→ L4',
+    l4Beery.status === 201 && l4Beery.body.autoLevel === 'L4',
+    `status=${l4Beery.status}, level=${l4Beery.body?.autoLevel}`,
+  );
+
+  const quadruped3 = await createRecord(lin.id, {
+    stabilityPass: true,
+    quadrupedHoldSec: 3,
+    npcCm: 7,
+    tvps4Std: 95,
+    beeryVmiStd: 95,
+    classroomAdaptationPass: true,
+  });
+  check(
+    'quadrupedHoldSec=3 + stabilityPass=true → L0（不忽略真实低分）',
+    quadruped3.status === 201 && quadruped3.body.autoLevel === 'L0',
+    `status=${quadruped3.status}, level=${quadruped3.body?.autoLevel}`,
+  );
+
+  const beeryExpected = seed.calculateBeeryVmiNorms(12, ageMonths, 'vmiMain');
+  const beeryRaw = await createRecord(lin.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    tvps4Std: 95,
+    beeryVmiRaw: 12,
+    classroomAdaptationPass: true,
+  });
+  check(
+    `Beery 原始分 12 → 标准分 ${beeryExpected.standardScore}`,
+    beeryRaw.status === 201 &&
+      beeryRaw.body.beeryVmiStd === beeryExpected.standardScore,
+    `status=${beeryRaw.status}, std=${beeryRaw.body?.beeryVmiStd}, expected=${beeryExpected.standardScore}`,
+  );
+  const beeryMeta = JSON.parse(beeryRaw.body.assessmentMetaJson);
+  check(
+    'meta.raw 保存 Beery 原始分',
+    beeryMeta.raw?.beeryVmiRaw === 12,
+    JSON.stringify(beeryMeta.raw),
+  );
+
+  const tvpsRawInput = {
+    DIS: 14,
+    MEM: 12,
+    SPA: 13,
+    CON: 11,
+    SEQ: 12,
+    FGR: 13,
+    CLO: 12,
+  };
+  const tvpsExpected = seed.calculateTvps4ProfileNorms(tvpsRawInput, ageYears);
+  const tvpsRaw = await createRecord(lin.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    tvps4RawScores: tvpsRawInput,
+    classroomAdaptationPass: true,
+  });
+  check(
+    `TVPS-4 七项原始分 → 综合标准分 ${tvpsExpected.overallStandardScore}`,
+    tvpsRaw.status === 201 &&
+      tvpsRaw.body.tvps4Std === tvpsExpected.overallStandardScore,
+    `status=${tvpsRaw.status}, std=${tvpsRaw.body?.tvps4Std}, expected=${tvpsExpected.overallStandardScore}`,
+  );
+  const tvpsMeta = JSON.parse(tvpsRaw.body.assessmentMetaJson);
+  check(
+    'meta.raw 保存 TVPS-4 七项原始分',
+    tvpsMeta.raw?.tvps4RawScores?.DIS === 14 &&
+      tvpsMeta.raw?.tvps4RawScores?.CLO === 12,
+    JSON.stringify(tvpsMeta.raw),
+  );
+
+  const demRawInput = {
+    testAVerticalSec: 30,
+    testBVerticalSec: 32,
+    testCHorizontalRawSec: 60,
+    omissionErrors: 0,
+    additionErrors: 0,
+  };
+  const demExpected = seed.evaluateDemTestResult({
+    ageYears,
+    ...demRawInput,
+  });
+  const demRaw = await createRecord(lin.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    tvps4Std: 95,
+    demRaw: demRawInput,
+    classroomAdaptationPass: true,
+  });
+  check(
+    `DEM 原始输入 → ${demExpected.behaviorType}`,
+    demRaw.status === 201 && demRaw.body.demNormTier === demExpected.behaviorType,
+    `status=${demRaw.status}, tier=${demRaw.body?.demNormTier}, expected=${demExpected.behaviorType}`,
+  );
+  const demMeta = JSON.parse(demRaw.body.assessmentMetaJson);
+  check(
+    'meta.raw 保存 DEM 原始输入',
+    demMeta.raw?.demRaw?.testAVerticalSec === 30 &&
+      demMeta.raw?.demRaw?.omissionErrors === 0,
+    JSON.stringify(demMeta.raw),
+  );
+
+  const mvptOnly = await createRecord(lin.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    mvpt3Std: 75,
+    classroomAdaptationPass: true,
+  });
+  check(
+    '仅 MVPT-3=75 时 tvps4Std 保持为空',
+    mvptOnly.status === 201 &&
+      mvptOnly.body.tvps4Std === null &&
+      mvptOnly.body.mvpt3Std === 75,
+    `status=${mvptOnly.status}, tvps4Std=${mvptOnly.body?.tvps4Std}, mvpt3Std=${mvptOnly.body?.mvpt3Std}`,
+  );
+  check(
+    'MVPT-3 兜底参与定级 → L2',
+    mvptOnly.body.autoLevel === 'L2',
+    `level=${mvptOnly.body?.autoLevel}`,
+  );
+
   const l5 = await createRecord(lin.id, {
     stabilityPass: true,
     npcCm: 7,
-    tvps4Std: 85,
-    beeryVmiStd: 85,
+    tvps4Std: 95,
+    beeryVmiStd: 95,
     classroomAdaptationPass: true,
     radarScores: {
       stabilize: 88,
@@ -194,7 +399,20 @@ async function main() {
     l5.status === 201 && l5.body.autoLevel === 'L5',
     `status=${l5.status}, level=${l5.body?.autoLevel}`,
   );
+  const l5Meta = JSON.parse(l5.body.assessmentMetaJson);
+  check(
+    'L5 记录写入 assessmentMetaJson.grading',
+    l5Meta.grading?.recommendedLevel === 'L5' &&
+      l5Meta.grading?.recommendedSopCardCodes?.length > 0,
+    JSON.stringify(l5Meta.grading),
+  );
 
+  const l5Radar = JSON.parse(l5.body.radarScoresJson);
+  check(
+    '人工雷达分数优先落库',
+    l5Radar.stabilize === 88,
+    JSON.stringify(l5Radar),
+  );
   const studentAfter = await call(`/students/${lin.id}`);
   check(
     '自动定级回写学生 currentLevel',
@@ -202,12 +420,37 @@ async function main() {
     `currentLevel=${studentAfter.body.currentLevel}`,
   );
 
+  const zhang = students.body.items.find(
+    (item) => item.studentCode === 'VMI-2026003',
+  );
+  const redRecord = await createRecord(zhang.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    tvps4Std: 95,
+    beeryVmiStd: 95,
+    classroomAdaptationPass: true,
+  });
+  const redMeta = JSON.parse(redRecord.body.assessmentMetaJson);
+  check(
+    '红区学生评估记录定级 L0 且 meta 标记 RED_ZONE_LOCKED',
+    redRecord.status === 201 &&
+      redRecord.body.autoLevel === 'L0' &&
+      redMeta.grading?.triageStatus === 'RED_ZONE_LOCKED',
+    `status=${redRecord.status}, level=${redRecord.body?.autoLevel}, triage=${redMeta.grading?.triageStatus}`,
+  );
+  const zhangAfter = await call(`/students/${zhang.id}`);
+  check(
+    '评估服务不改学生 triageStatus（R1 仍归 TriageService）',
+    zhangAfter.body.triageStatus === 'RED_ZONE_LOCKED',
+    `triageStatus=${zhangAfter.body.triageStatus}`,
+  );
+
   const records = await call(`/assessments/${lin.id}/records`);
   check(
     '评估记录按 evalPhase 分组返回',
     records.status === 200 &&
-      records.body.total === 7 &&
-      records.body.groups.BASELINE.length === 7,
+      records.body.total === 13 &&
+      records.body.groups.BASELINE.length === 13,
     `status=${records.status}, total=${records.body?.total}`,
   );
 
@@ -228,6 +471,12 @@ async function main() {
     '报告页面可访问且包含学生姓名',
     reportPage.status === 200 && reportHtml.includes('林小宇'),
     `status=${reportPage.status}`,
+  );
+  check(
+    '报告包含评估结论与临床瓶颈分析',
+    reportHtml.includes('评估结论与训练处方') &&
+      reportHtml.includes('临床瓶颈分析'),
+    '报告缺少评估结论段落',
   );
 
   const audit = await call('/audit-logs?action=UPDATE_ASSESSMENT&pageSize=50');

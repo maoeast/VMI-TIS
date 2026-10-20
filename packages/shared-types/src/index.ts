@@ -181,6 +181,7 @@ export interface AssessmentRecord {
   mvpt3Std?: number;
   demNormTier?: string;
   radarScoresJson?: string; // JSON.stringify({stabilize:70, efficiency:68, ...})
+  assessmentMetaJson?: string; // JSON.stringify(AssessmentMeta)
   autoLevel?: CapabilityLevel;
   reportFileUrl?: string;
   createdAt: Date;
@@ -441,6 +442,105 @@ export interface AutoLevelInput {
   beeryVmiStd?: number;
   /** 课堂抄写/文具使用补充评估；false → L4，true/未测 → L5 */
   classroomAdaptationPass?: boolean;
+}
+
+/** Beery VMI-6 常模换算结果（种子纯函数返回） */
+export interface BeeryNormResult {
+  rawScore: number;
+  developmentalAgeMonths: number;
+  developmentalAgeLabel: string;
+  standardScore: number;
+  percentileRank: number;
+  clinicalClassification: string;
+}
+
+/** TVPS-4 七个子测验原始分（0–18） */
+export interface Tvps4RawScores {
+  DIS: number;
+  MEM: number;
+  SPA: number;
+  CON: number;
+  SEQ: number;
+  FGR: number;
+  CLO: number;
+}
+
+/** DEM 发育性眼动测验原始输入 */
+export interface DemRawInput {
+  testAVerticalSec: number;
+  testBVerticalSec: number;
+  testCHorizontalRawSec: number;
+  omissionErrors: number;
+  additionErrors: number;
+}
+
+/** 评估定级结果（写入 assessmentMetaJson.grading） */
+export interface AssessmentGradingMeta {
+  triageStatus: 'RED_ZONE_LOCKED' | 'GREEN_ACTIVE';
+  recommendedLevel: CapabilityLevel;
+  recommendedLevelLabel: string;
+  clinicalBottleneckAnalysis: string;
+  radarSixDimensions: [number, number, number, number, number, number];
+  recommendedSopCardCodes: string[];
+}
+
+/** 评估记录详细元数据（JSON 字符串落库） */
+export interface AssessmentMeta {
+  grading: AssessmentGradingMeta;
+  beery?: {
+    main?: BeeryNormResult;
+    vp?: BeeryNormResult;
+    mc?: BeeryNormResult;
+  };
+  tvps4?: {
+    scaledScores: Record<string, number>;
+    overallStandardScore: number;
+    overallPercentile: number;
+    weakestSubtests: Array<{
+      code: string;
+      nameCn: string;
+      scaledScore: number;
+      matchedSopCards: string[];
+    }>;
+  };
+  dem?: {
+    verticalTotalSec: number;
+    horizontalAdjustedSec: number;
+    demRatio: number;
+    behaviorType: string;
+    summaryText: string;
+  };
+  inputs?: {
+    quadrupedHoldSec: number;
+    spsrcSensoryStable: boolean;
+    classroomCopyAccuracyPct?: number;
+    nsucoMinScore: number;
+    tvpsOverallStdScore: number;
+    beeryVmiStdScore: number;
+    beeryVpStdScore?: number;
+    beeryMcStdScore?: number;
+  };
+  /** 原始测量输入：用于审计与事后复算，不参与公式（公式仍只读种子函数） */
+  raw?: {
+    beeryVmiRaw?: number;
+    beeryVpRaw?: number;
+    beeryMcRaw?: number;
+    tvps4RawScores?: Tvps4RawScores;
+    demRaw?: DemRawInput;
+    nsucoScore?: { pursuit: number; saccade: number; vergence?: number };
+  };
+}
+
+/** R2 逐题判分响应（连续 3 题 0 分中止） */
+export interface ScaleScoreResult {
+  shouldTerminate: boolean;
+  sessionId: string;
+  submittedItems: number;
+  lastThree: number[];
+  consecutiveZeroCount: number;
+  ceilingItemIndex: number | null;
+  totalRawScore: number;
+  message?: string;
 }
 
 /** 晋级触发检查结果 */

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Circle,
+  ClipboardCheck,
   Crosshair,
   Eye,
   LockKeyhole,
@@ -17,6 +18,7 @@ import {
 } from '../../api/client';
 import { useAppStore } from '../../store/useAppStore';
 import { levelLabel } from '../../utils/format';
+import { AssessmentCardPanel } from '../../components/assessment/AssessmentCardPanel';
 import { BubbleGame } from './BubbleGame';
 import { BrockGame } from './BrockGame';
 import { CalibrationGame } from './CalibrationGame';
@@ -59,6 +61,7 @@ export function StudentPadPage() {
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [stars, setStars] = useState(0);
   const [lastResult, setLastResult] = useState<'pass' | 'fail' | null>(null);
+  const [mode, setMode] = useState<'training' | 'assessment'>('training');
 
   const { emitPadTrialCompleted } = useWebSocket({
     role: 'student',
@@ -82,6 +85,7 @@ export function StudentPadPage() {
       setElapsed(0);
       setStars(0);
       setLastResult(null);
+      setMode('training');
 
       if (!activeStudentId) {
         setLoading(false);
@@ -131,7 +135,7 @@ export function StudentPadPage() {
   }, [activeStudentId, showToast]);
 
   useEffect(() => {
-    if (!sessionId || locked || overlayOpen) return;
+    if (mode !== 'training' || !sessionId || locked || overlayOpen) return;
 
     const secondTimer = setInterval(() => {
       setElapsed((value) => value + 1);
@@ -153,13 +157,14 @@ export function StudentPadPage() {
       clearInterval(secondTimer);
       clearInterval(syncTimer);
     };
-  }, [sessionId, locked, overlayOpen]);
+  }, [mode, sessionId, locked, overlayOpen]);
 
   const handleComplete = useCallback(
     async (
       result: 'pass' | 'fail',
       stats: { accuracyRate: number; clicks: number; pops: number },
     ) => {
+      if (mode !== 'training') return;
       setLastResult(result);
       if (result === 'pass') {
         setStars((value) => value + 1);
@@ -190,7 +195,7 @@ export function StudentPadPage() {
         smoothPursuitGain: 0.85,
       });
     },
-    [sessionId, activeStudentId, game, emitPadTrialCompleted],
+    [sessionId, activeStudentId, game, emitPadTrialCompleted, mode],
   );
 
   const unlock = async (authorizationCode: string) => {
@@ -295,6 +300,16 @@ export function StudentPadPage() {
               <Timer className="h-4 w-4" />
               数字额度 {remainingQuota}s
             </div>
+            <button
+              type="button"
+              onClick={() =>
+                setMode(mode === 'training' ? 'assessment' : 'training')
+              }
+              className="flex items-center gap-1.5 rounded-xl bg-teal-400/15 px-3 py-2 text-teal-200"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              {mode === 'training' ? '评估出示' : '返回训练'}
+            </button>
             {lastResult && (
               <span
                 className={
@@ -309,48 +324,71 @@ export function StudentPadPage() {
           </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {GAMES.map((item) => {
-            const Icon = item.icon;
-            return (
+        {mode === 'assessment' ? (
+          <div className="rounded-2xl bg-white p-4 text-slate-800">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">评估题卡出示</h2>
+                <p className="text-xs text-slate-500">
+                  仅出示 Beery / TVPS-4 / DEM 题卡；不计数字额度、不记录 Trial、不改投屏模式。
+                </p>
+              </div>
               <button
-                key={item.key}
                 type="button"
-                onClick={() => setGame(item.key)}
-                className={
-                  game === item.key
-                    ? 'rounded-2xl bg-white p-3 text-left text-[#0F4C5C] shadow-lg'
-                    : 'rounded-2xl bg-white/5 p-3 text-left text-teal-100 hover:bg-white/10'
-                }
+                className="btn-secondary"
+                onClick={() => setMode('training')}
               >
-                <Icon className="h-5 w-5" />
-                <div className="mt-1.5 text-sm font-bold">{item.label}</div>
-                <div className={game === item.key ? 'text-[11px] text-slate-500' : 'text-[11px] text-teal-200/70'}>
-                  {item.hint}
-                </div>
+                返回训练
               </button>
-            );
-          })}
-        </div>
+            </div>
+            <AssessmentCardPanel revealAnswer={false} />
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {GAMES.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setGame(item.key)}
+                    className={
+                      game === item.key
+                        ? 'rounded-2xl bg-white p-3 text-left text-[#0F4C5C] shadow-lg'
+                        : 'rounded-2xl bg-white/5 p-3 text-left text-teal-100 hover:bg-white/10'
+                    }
+                  >
+                    <Icon className="h-5 w-5" />
+                    <div className="mt-1.5 text-sm font-bold">{item.label}</div>
+                    <div className={game === item.key ? 'text-[11px] text-slate-500' : 'text-[11px] text-teal-200/70'}>
+                      {item.hint}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
 
-        <div className="rounded-2xl bg-white/5 p-3">
-          {game === 'bubble' && (
-            <BubbleGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
-          )}
-          {game === 'brock' && (
-            <BrockGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
-          )}
-          {game === 'star' && (
-            <StarGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
-          )}
-          {game === 'calibration' && (
-            <CalibrationGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
-          )}
-        </div>
+            <div className="rounded-2xl bg-white/5 p-3">
+              {game === 'bubble' && (
+                <BubbleGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
+              )}
+              {game === 'brock' && (
+                <BrockGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
+              )}
+              {game === 'star' && (
+                <StarGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
+              )}
+              {game === 'calibration' && (
+                <CalibrationGame disabled={overlayOpen} onComplete={(result, stats) => void handleComplete(result, stats)} />
+              )}
+            </div>
 
-        <p className="mt-4 text-center text-[11px] text-teal-200/60">
-          本次课数字训练累计达到 900 秒后将强制全屏护眼休息；20 秒远眺只关闭遮罩，重置额度需教师授权码。
-        </p>
+            <p className="mt-4 text-center text-[11px] text-teal-200/60">
+              本次课数字训练累计达到 900 秒后将强制全屏护眼休息；20 秒远眺只关闭遮罩，重置额度需教师授权码。
+            </p>
+          </>
+        )}
       </main>
 
       <EyeRestOverlay

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
+import { AssessmentGradingService } from './assessment-grading.service';
 import { AssessmentRecordController } from './assessment-record.controller';
 import { AssessmentRecordService } from './assessment-record.service';
-import { AutoLevelService } from './auto-level.service';
 import { ReportService } from './report.service';
 import { TriageController } from './triage.controller';
 import { TriageService } from './triage.service';
@@ -11,9 +11,9 @@ import { TriageService } from './triage.service';
   providers: [
     TriageService,
     AssessmentRecordService,
-    AutoLevelService,
+    AssessmentGradingService,
     ReportService,
   ],
-  exports: [TriageService, AssessmentRecordService, AutoLevelService],
+  exports: [TriageService, AssessmentRecordService],
 })
 export class AssessmentsModule {}

@@ -5,6 +5,16 @@
   "description": "VMI-TIS 前后端共享 TypeScript 类型契约",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./assessment-seed": {
+      "types": "./dist/vmi_tis_assessment_scales_seed.d.ts",
+      "default": "./dist/vmi_tis_assessment_scales_seed.js"
+    }
+  },
   "files": [
     "dist"
   ],

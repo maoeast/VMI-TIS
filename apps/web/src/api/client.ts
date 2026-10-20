@@ -5,6 +5,7 @@ import type {
   AutoLevelInput,
   CreateIepPlanDto,
   CreateStudentDto,
+  DemRawInput,
   HomeworkCheckin,
   IepPlan,
   ImportExcelResponseDto,
@@ -13,6 +14,7 @@ import type {
   Student,
   TrainingSession,
   TrialRecord,
+  Tvps4RawScores,
   WorkbenchSummaryDto,
 } from '@vmi-tis/shared-types';
 
@@ -146,6 +148,9 @@ export interface ScaleScoreResponse {
   sessionId: string;
   submittedItems: number;
   lastThree: number[];
+  consecutiveZeroCount: number;
+  ceilingItemIndex: number | null;
+  totalRawScore: number;
   message?: string;
 }
 
@@ -234,6 +239,14 @@ export interface CreateAssessmentRecordPayload
   studentId: string;
   evalPhase: 'BASELINE' | 'STAGE_8W' | 'TRANSITION';
   beeryVmiRaw?: number;
+  beeryVpStd?: number;
+  beeryMcStd?: number;
+  beeryVpRaw?: number;
+  beeryMcRaw?: number;
+  tvps4RawScores?: Tvps4RawScores;
+  demRaw?: DemRawInput;
+  quadrupedHoldSec?: number;
+  classroomCopyAccuracyPct?: number;
   nsucoScore?: { pursuit: number; saccade: number; vergence?: number };
   radarScores?: Record<string, number>;
 }
