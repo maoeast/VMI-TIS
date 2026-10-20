@@ -43,7 +43,7 @@
 - ✅ WSL2 已编译 debug APK：`apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（4.0 MB，`com.vmitis.pad`；本轮已含评估 UI），API 指向 `http://192.168.0.188:3000`。
 - ⏳ 无设备/模拟器，APK 未做安装/运行验证；WSL 访问 Windows 局域网 API 超时。
 - ✅ 会话交接体系与 APK 构建配置已提交：`3d943fc` / `fe1b08d`；未 push。
-- ✅ 评估模块已接入种子 5 纯函数：`AssessmentGradingService` + `assessmentMetaJson` + 前端题卡/初筛/原始分 + 学生 Pad 评估出示模式；`npm run build` 与 `npm run verify:all` 全绿；改动未提交。
+- ✅ 评估模块已接入种子 5 纯函数：`AssessmentGradingService` + `assessmentMetaJson` + 前端题卡/初筛/原始分 + 学生 Pad 评估出示模式；`npm run build` 与 `npm run verify:all` 全绿；已提交 `c484e28`（代码）/ `dba859c`（文档）。
 - ⏳ 浏览器渲染冒烟未执行（本环境无 Chromium/Chrome）；APK 已重编译为 4.0 MB 并包含评估 UI，无设备未做安装/运行验证。
 - 已知偏差：Kiosk 插件、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突。
 
