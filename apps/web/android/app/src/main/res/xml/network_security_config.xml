@@ -10,5 +10,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Windows API 所在局域网主机（构建时 VITE_API_BASE=http://192.168.0.188:3000） -->
+        <domain includeSubdomains="false">192.168.0.188</domain>
     </domain-config>
 </network-security-config>
