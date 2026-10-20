@@ -61,6 +61,7 @@
 - 所有 JSON 字段用 `JSON.stringify()` 存 `String`；禁止 SQLite 不支持的标量数组/`@db.Timestamptz`。
 - DTO 用 `class-validator` 校验；服务端不信任客户端传入的红区/额度/晋级结论。
 - 新增/修改 R1–R4 逻辑必须带正例与反例验收；负例至少覆盖绕过路径（PATCH、空初筛、未上传回执、899+2、重复晋级、错误授权码、匿名 Socket、跨学生伪造）。
+- **评估模块唯一数据/公式源**：`packages/shared-types/src/vmi_tis_assessment_scales_seed.ts`。后端 `AssessmentsService` 必须 import 并调用其中 5 个纯函数——`evaluateCeilingRule`（连续 3 题 0 分中止）、`calculateBeeryVmiNorms`、`calculateTvps4ProfileNorms`、`evaluateDemTestResult`（常模标准分换算）、`determineRecommendedLevelL0ToL5`（L0–L5 定级；落库由服务端负责）。前端评估中心与学生端必须读取其中常量数组渲染初筛表单（`RED_ZONE_TRIAGE_ITEMS` / `MILESTONE_0_TO_6_CHECKLIST` / `BEHAVIOR_SCREENING_ITEMS` / `NSUCO_STANDARD_SCALE` / `OPTOMETRY_NORMS`）、Beery VMI `svgRenderPaths`、TVPS-4 `sampleDigitalItems[].exposureTimeSec=5` 记忆题卡、`DEM_STIMULUS_MATRICES` 数字矩阵。**禁止自行重写算分公式或编造题目数据。**
 - 前端三端共用一个构建；不要把 Node 服务端能力带进 SPA；API 基址用 `VITE_API_BASE` / `VITE_SOCKET_URL` / `VITE_SOCKET_TOKEN` 在构建期注入。
 - Android 用 `androidScheme: 'https'`；调局域网 HTTP API 时保留 `android.allowMixedContent: true`，并把服务器 IP 加入 `network_security_config.xml`；生产改 HTTPS 后移除 mixed-content 开关。
 - 注释与文档用中文，代码标识符用英文；沿用现有文件风格，不引入新的格式化/状态管理/UI 框架。

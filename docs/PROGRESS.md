@@ -245,3 +245,12 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - ✅ 新增 `docs/index.md`：文档地图与权威源；`README.md` 增加「文档入口」。
 - 规则：`.continue-here.md` 是当前现场唯一快照；`docs/PROGRESS.md` 只追加历史；两者矛盾以 `.continue-here.md` 为准。
 - 提交：`3d943fc docs: add session handoff system`、`fe1b08d fix(android): build debug APK with LAN API config`；未 push。
+
+## 2026-10-20 评估量表种子接入
+
+- ✅ `packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` 保留为评估模块唯一数据/公式源，并通过 `packages/shared-types/src/index.ts` 的 `export *` 对外提供。
+- 约定：后端 `AssessmentsService` 调用 5 个纯函数——`evaluateCeilingRule`（连续 3 题 0 分中止）、`calculateBeeryVmiNorms`、`calculateTvps4ProfileNorms`、`evaluateDemTestResult`（常模标准分换算）、`determineRecommendedLevelL0ToL5`（L0–L5 定级；落库由服务端负责）。
+- 约定：前端评估中心/学生端读取常量数组渲染初筛表单、Beery VMI `svgRenderPaths`、TVPS-4 `sampleDigitalItems[].exposureTimeSec=5` 记忆题卡、`DEM_STIMULUS_MATRICES` 数字矩阵。
+- 禁止自行重写算分公式或编造题目数据；现有 `AssessmentsService` / 评估页面未改动，接入属于下一轮评估模块开发。
+- 验证：`npm run build`（shared-types + api + web）通过；Node 运行时确认 5 个纯函数可调用，`BEERY_VMI_6_ITEMS` 30 项且 `svgRenderPaths` 可读，TVPS-4 MEM `exposureTimeSec=5`，`DEM_STIMULUS_MATRICES` 三类矩阵可读；未跑 `verify:all`（无业务逻辑变更）。
+- 提交：`feat(shared-types): add assessment scales seed`（本提交）；`:Zone.Identifier` 已删除；未 push。

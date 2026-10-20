@@ -10,6 +10,7 @@
 |---|---|
 | **新会话 / 第一次接手** | [`../AGENTS.md`](../AGENTS.md)（红线与冻结项）→ [`../.continue-here.md`](../.continue-here.md)（完整现场）→ [`会话启动.md`](会话启动.md)（恢复流程） |
 | **要改某个功能** | 先在 [`vmi_tis.md`](vmi_tis.md) 找到拥有该主题的章节，再看 [`IMPLEMENTATION_TASKS.md`](IMPLEMENTATION_TASKS.md) 对应 Task，最后查 [`PROGRESS.md`](PROGRESS.md) 的已知偏差 |
+| **要开发/修改评估模块** | 先读 [`../AGENTS.md`](../AGENTS.md) 的「评估模块唯一数据/公式源」规则，再读 `../packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` |
 | **想知道当前进度 / 验证结果** | [`PROGRESS.md`](PROGRESS.md)（历史）＋ [`../.continue-here.md`](../.continue-here.md)（当前） |
 | **查外部评审意见** | [`chatgpt评审.md`](chatgpt评审.md)（29 项；`f1b1c66` 已处理） |
 | **WSL2 环境 / 端口 / Android 构建** | [`../WSL2_HANDOFF.md`](../WSL2_HANDOFF.md) |
@@ -22,6 +23,7 @@
 | 产品需求 / 详细设计 | `vmi_tis.md` | **权威源**：SRS、八大功能模块、技术栈、Android 适配、R1–R4、数据库/API/部署 |
 | 原型与参考 | `vmi_tis_prototype.html`、`book/`、`孤独症学生视觉运动整合训练干预系统设计方案.docx` | 视觉/方法学参考；不作为当前实现契约 |
 | 实施任务卡 | `IMPLEMENTATION_TASKS.md` | Task 1–6 的目标、产出文件、关键逻辑与验收标准 |
+| 评估题库 / 常模 / 公式 | `../packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` | 评估模块**唯一数据与公式源**：5 个纯函数 + 常量数组；禁止重写公式或编造题目 |
 | 历史进度 | `PROGRESS.md` | 按任务/日期记录已完成、验证、偏差与下一步；**只追加，不回写成当前状态** |
 | 当前现场 | `../.continue-here.md` | 跨会话状态快照；会话结束按 `会话结束.md` 全量覆写 |
 | 会话流程 | `会话启动.md` / `会话结束.md` | AI 助手会话的恢复/收尾流程；HANDOFF 区块是现场摘要 |
@@ -39,7 +41,8 @@
 - ✅ WSL2 已编译 debug APK：`apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（3.8 MB，`com.vmitis.pad`），API 指向 `http://192.168.0.188:3000`。
 - ⏳ 无设备/模拟器，APK 未做安装/运行验证；WSL 访问 Windows 局域网 API 超时。
 - ✅ 会话交接体系与 APK 构建配置已提交：`3d943fc` / `fe1b08d`；未 push。
-- ⏳ 仅剩 2 个未跟踪文件：评估量表种子（尚未接入）与 `:Zone.Identifier`；去留待用户拍板。
+- ✅ 评估量表种子已接入并提交（`feat(shared-types): add assessment scales seed`）；工作区 clean。
+- ✅ 接入后 `npm run build`（shared-types + api + web）通过；5 个纯函数与四类前端数据在 Node 运行时验证可读。
 - 已知偏差：Kiosk 插件、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突。
 
 ## 文档维护规范

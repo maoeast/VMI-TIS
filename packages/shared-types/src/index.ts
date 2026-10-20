@@ -454,3 +454,6 @@ export interface PromotionCheckResult {
   homeCheckinCount: number;
   reason?: string;
 }
+
+/** 评估子系统：题库、常模、SVG 范图、DEM 矩阵与 R2/L0–L5 纯函数（唯一数据源） */
+export * from './vmi_tis_assessment_scales_seed';
