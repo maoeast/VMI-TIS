@@ -44,7 +44,7 @@
 
 1. **第一层：初筛问卷与红区熔断拦截器**：
    - 内置近距离用眼表现、读写跳字漏行、空间动作协调、日常寻物线索等结构化初筛问卷，以及 0–6 岁视觉发育里程碑核查表。
-   - **红区熔断机制（核心合规逻辑）**：内置视力可疑/屈光不正、斜视/复视（重影）/遮盖异常、弱视危险因素/眼球震颤/伴头痛呕吐三类红区指标。只要勾选任一红区项，系统立即将该学生档案状态强制置为“红区锁定（暂停常规训练）”，自动生成标准格式《医教结合眼科/视光专科转介单》。
+   - **红区熔断机制（核心合规逻辑）**：内置视力可疑/屈光不正、斜视/复视（重影）/遮盖异常、弱视危险因素/眼球震颤/伴头痛呕吐三类红区指标（种子 `RED_ZONE_TRIAGE_ITEMS`，编码 `RED_01`–`RED_03`）。初筛提交时前端同时上报勾选的结构化编码与行为项文本；服务端把「种子编码（未知编码返回 400，不静默降级）」与「行为项文本关键词 + 阈值」两条路径都跑一遍并取并集去重，不采信客户端给出的红区结论。命中任一红区项，系统立即将该学生档案状态强制置为“红区锁定（暂停常规训练）”，自动生成标准格式《医教结合眼科/视光专科转介单》；转介单红区项以种子 label 数组存入 `redZoneItemsJson`。
    - **专科回执核验解锁**：支持拍照或上传医院眼科验光配镜处方及专科处置回执扫描件，经视光师/康复主任在线会签审核通过后，方可解除红区锁定并开放对应层级的视觉训练排课。
 2. **第二层：视觉通路与视觉效率专科录入台**：
    - 结构化记录双眼/单眼裸眼及矫正视力、屈光状态、调节幅度（Age Duane 尺近点 cm/D）、调节灵活度（±2.00D 双面镜 cpm）、双眼视三级功能（Worth 四点同时视、融合视范围、Randot/Titmus 立体视锐度）、集合近点（NPC cm）、NSUCO 眼动标准化观察分级（注视/追视/扫视及头身代偿评分）与遮盖试验结果。
@@ -244,7 +244,7 @@ vmi-tis-platform/
 | `POST /api/students` | 新生入案建档 | 默认 `PENDING_SCREENING`，自动生成 `VMI-<年份><序号>` 学号 |
 | `GET/PATCH/DELETE /api/students/:id` | 学生详情 / 更新 / 删除 | 详情含转介、评估、IEP、课次、家庭作业 |
 | `POST /api/students/import-excel` | Excel/CSV 批量导入 | `ExcelJS` 解析；失败行返回 `errors`；单次 50 行 < 5 秒 |
-| `POST /api/assessments/triage` | 初筛与红区核查 | 服务端按关键字与阈值重算，命中即 `RED_ZONE_LOCKED` 并生成转介单 |
+| `POST /api/assessments/triage` | 初筛与红区核查 | 请求带 `redZoneCodes`（种子编码）与 `behaviorItems`（文本）；服务端把编码与「关键字 + 阈值」两条路径取并集重算，未知编码返回 400，命中即 `RED_ZONE_LOCKED` 并生成转介单 |
 | `POST /api/assessments/referral-upload` | 上传眼科回执 | 状态 → `REFERRAL_UPLOADED` |
 | `POST /api/assessments/referral-audit` | 审核回执 | `APPROVED` → `GREEN_ACTIVE`；`REJECTED` → `RED_ZONE_LOCKED` |
 | `GET /api/assessments/referrals/:studentId` | 转介列表 | 按学生返回转介单与审核状态 |

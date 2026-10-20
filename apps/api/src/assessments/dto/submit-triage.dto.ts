@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   IsArray,
   IsNumber,
   IsOptional,
@@ -32,4 +33,14 @@ export class SubmitTriageDto {
   @IsArray()
   @IsString({ each: true })
   redZoneItems?: string[];
+
+  /**
+   * 结构化红区编码（种子 RED_ZONE_TRIAGE_ITEMS.code）。
+   * 服务端按种子重算；未知编码直接 400，不静默降级。
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(10)
+  redZoneCodes?: string[];
 }

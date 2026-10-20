@@ -6,48 +6,54 @@ import {
 } from '@nestjs/common';
 import {
   AuditAction,
+  RED_ZONE_TRIAGE_ITEMS,
   ReferralAuditStatus,
 } from '@vmi-tis/shared-types';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditReferralDto } from './dto/audit-referral.dto';
-import { BehaviorItemDto, SubmitTriageDto } from './dto/submit-triage.dto';
+import { SubmitTriageDto } from './dto/submit-triage.dto';
 import { UploadReferralDto } from './dto/upload-referral.dto';
 
 interface RedZoneRule {
-  label: string;
+  /** 命中的种子红区编码；转介单显示文案一律取种子 label。 */
+  seedCode: string;
   keywords: string[];
   matches: (score: number) => boolean;
 }
 
+const RED_ZONE_SEED_BY_CODE = new Map(
+  RED_ZONE_TRIAGE_ITEMS.map((item) => [item.code, item]),
+);
+
 const RED_ZONE_RULES: RedZoneRule[] = [
   {
-    label: '屈光参差 ≥ 2.00D',
+    seedCode: 'RED_01',
     keywords: ['屈光参差'],
     matches: (score) => score >= 2.0,
   },
   {
-    label: '斜视阳性',
+    seedCode: 'RED_02',
     keywords: ['斜视', '外隐斜', '内隐斜', '上下斜视'],
     matches: (score) => score > 0,
   },
   {
-    label: '遮盖试验异常',
+    seedCode: 'RED_02',
     keywords: ['遮盖'],
     matches: (score) => score > 0,
   },
   {
-    label: '复视/重影',
+    seedCode: 'RED_02',
     keywords: ['复视', '重影'],
     matches: (score) => score > 0,
   },
   {
-    label: '眼球震颤',
+    seedCode: 'RED_03',
     keywords: ['眼球震颤', '震颤'],
     matches: (score) => score > 0,
   },
   {
-    label: '视力异常/屈光不正',
+    seedCode: 'RED_01',
     keywords: ['裸眼视力', '视力', '屈光不正'],
     matches: (score) => score > 0,
   },
@@ -70,8 +76,8 @@ export class TriageService {
       throw new NotFoundException('学生不存在');
     }
 
-    const redZoneItems = this.detectRedZone(dto.behaviorItems);
-    const isRedZone = redZoneItems.length > 0;
+    const redZone = this.detectRedZone(dto);
+    const isRedZone = redZone.codes.length > 0;
     const hasOpenRedZone =
       student.triageStatus === 'RED_ZONE_LOCKED' ||
       student.triageStatus === 'REFERRAL_UPLOADED';
@@ -84,7 +90,7 @@ export class TriageService {
     }
 
     const referral = isRedZone
-      ? await this.upsertPendingRedZoneReferral(dto, redZoneItems)
+      ? await this.upsertPendingRedZoneReferral(dto, redZone.labels)
       : await this.prisma.assessmentTriageReferral.create({
           data: {
             studentId: dto.studentId,
@@ -111,7 +117,7 @@ export class TriageService {
       targetId: dto.studentId,
       changesAfter: {
         triageStatus: isRedZone ? 'RED_ZONE_LOCKED' : 'GREEN_ACTIVE',
-        redZoneItems,
+        redZoneCodes: redZone.codes,
       },
     });
 
@@ -242,29 +248,51 @@ export class TriageService {
     });
   }
 
-  private detectRedZone(items: BehaviorItemDto[]): string[] {
-    const detected: string[] = [];
+  /**
+   * R1 红区重算：结构化编码路径与文本关键词路径始终都跑，取并集去重。
+   * 编码路径 fail-closed（未知编码 400）；文本路径兜底旧客户端与漏勾编码的填报。
+   */
+  private detectRedZone(dto: SubmitTriageDto): {
+    codes: string[];
+    labels: string[];
+  } {
+    const codes = new Set<string>();
+
+    for (const code of dto.redZoneCodes ?? []) {
+      const seedItem = RED_ZONE_SEED_BY_CODE.get(code);
+      if (!seedItem) {
+        throw new BadRequestException(`未知红区编码：${code}`);
+      }
+      if (seedItem.lockHighLoadVisualTraining) {
+        codes.add(seedItem.code);
+      }
+    }
 
     for (const rule of RED_ZONE_RULES) {
       // 同一关键词可能出现多次（例如先报 0、再报屈光参差 2.0），
       // 必须检查所有匹配项，不能只看第一个。
-      const matched = items.some(
+      const matched = dto.behaviorItems.some(
         (item) =>
           rule.keywords.some((keyword) => item.item.includes(keyword)) &&
           rule.matches(item.score),
       );
 
       if (matched) {
-        detected.push(rule.label);
+        codes.add(rule.seedCode);
       }
     }
 
-    return [...new Set(detected)];
+    return {
+      codes: [...codes],
+      labels: RED_ZONE_TRIAGE_ITEMS.filter((item) => codes.has(item.code)).map(
+        (item) => item.label,
+      ),
+    };
   }
 
   private async upsertPendingRedZoneReferral(
     dto: SubmitTriageDto,
-    redZoneItems: string[],
+    redZoneLabels: string[],
   ) {
     const pending = await this.prisma.assessmentTriageReferral.findFirst({
       where: {
@@ -277,7 +305,7 @@ export class TriageService {
 
     const data = {
       behaviorItemsJson: JSON.stringify(dto.behaviorItems),
-      redZoneItemsJson: JSON.stringify(redZoneItems),
+      redZoneItemsJson: JSON.stringify(redZoneLabels),
     };
 
     if (pending) {

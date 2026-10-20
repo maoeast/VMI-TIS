@@ -29,7 +29,7 @@
 
 ## 红线（违反任一条先停下报告，不要自行绕过）
 
-1. **R1 红区熔断**：`RED_ZONE_LOCKED` / `REFERRAL_UPLOADED` 不得排课或启动训练；只有 `GREEN_ACTIVE` 可进入训练入口（开课、记分、数字时长、digital-start）与排课；红区项由服务端重新计算，不信任客户端结论；回执上传/审核校验红区单、回执、当前状态并事务化；学生通用 `PATCH` 不接受 `triageStatus/currentLevel/promotionStatus`；未闭环红区不能被空初筛解锁。
+1. **R1 红区熔断**：`RED_ZONE_LOCKED` / `REFERRAL_UPLOADED` 不得排课或启动训练；只有 `GREEN_ACTIVE` 可进入训练入口（开课、记分、数字时长、digital-start）与排课；红区项由服务端重新计算，不信任客户端结论——重算走「种子编码 `RED_ZONE_TRIAGE_ITEMS`」+「行为项文本关键词」两条路径的并集（两条始终都跑），未知编码返回 400，转介单红区项存种子 label 数组，审计只记 `redZoneCodes` 编码标识；回执上传/审核校验红区单、回执、当前状态并事务化；学生通用 `PATCH` 不接受 `triageStatus/currentLevel/promotionStatus`；未闭环红区不能被空初筛解锁。
 2. **R2 连续 0 分中止**：连续 3 题 `score=0` 立即中止量表并保存进度；状态键必须含 `studentId + evalPhase + sessionId`。当前状态存进程内存，单实例有效（已知偏差）。
 3. **R3 晋级**：连续 3 次课 ≥80% + ≥2 种材料 + ≥1 次家庭打卡 → `PROMOTION_READY`；只统计最近一次 `APPROVE_PROMOTION` 审计**之后完成**的课次；审批前重新核验；审批写入 `PROMOTION_READY` 审计。
 4. **R4 护眼硬锁**：数字训练累计 900 秒硬顶；Trial 与数字时长用旧值条件更新，冲突返回 409；教师重置必须提供服务端授权码（`DIGITAL_RESET_CODE`，开发缺省 `0808`）；学生端 20 秒远眺只关闭遮罩，不重置本课额度。

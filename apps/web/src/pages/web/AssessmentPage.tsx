@@ -334,6 +334,8 @@ export function AssessmentPage() {
       const result = await triageApi.submit({
         studentId: activeStudentId,
         behaviorItems: allBehaviorItems,
+        // 结构化编码是主路径；红色文本行为项保留作第二道防线。
+        redZoneCodes: screening.red,
         redZoneItems: [],
       });
       setTriageResult(result);

@@ -288,3 +288,23 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - ✅ `docs/会话结束.md` 步骤五改为“费曼式收尾报告 + 四行摘要”，要求先用大白话讲清本轮完成/未完成/未验证与下一步原子动作。
 - 验证：README/新文档/索引链接存在性检查通过；`git diff --check` 通过；本轮只改文档，未重跑业务门禁。
 - 提交：`c484e28`（评估模块代码）、`dba859c`（文档与费曼收尾）；未 push。
+
+## 2026-10-20 红区结构化编码通道（R1 加固）
+
+- ✅ `SubmitTriageDto` 新增 `redZoneCodes?: string[]`（`@IsOptional @IsArray @IsString({ each: true }) @ArrayMaxSize(10)`）；旧 `redZoneItems` 保留，服务端继续不采信。
+- ✅ `TriageService.detectRedZone` 改双路径并集：种子编码 `RED_ZONE_TRIAGE_ITEMS`（未知编码 `BadRequestException` 400，fail-closed）+ 原 6 条文本关键词规则始终都跑，同一集合去重；`RedZoneRule` 的 `label` 换成 `seedCode`，按语义映射屈光参差/视力异常→`RED_01`、斜视/遮盖/复视→`RED_02`、眼球震颤→`RED_03`。
+- ✅ 转介单 `redZoneItemsJson` 仍是 `string[]`（种子 label），`StudentsPage.tsx` / `AssessmentPage.tsx` 三个读取点未改；审计 `changesAfter` 改为 `{ triageStatus, redZoneCodes }`，不写行为项原文。
+- ✅ 前端 `TriagePayload` 增加 `redZoneCodes`；`AssessmentPage.submitTriage` 提交 `redZoneCodes: screening.red`，红色行为项文本保留作第二道防线。
+- ✅ `scripts/verify-task2.mjs` 新增 21 项断言：8 项建档 + P1–P6（单编码、双编码、编码+文本并集去重、旧文本路径、绿区、审计只存编码）+ N1–N7（未知编码 400、重复编码去重、空初筛 409、PATCH 不改状态、排课 403、开课 403、编码命中而文本 0 分仍红区）。Task 2 共 52 项检查全通过。
+- 验证：`npm run build`（shared-types + api + web，含 web `tsc --noEmit`）通过；Node `v20.20.2` 下 `npm run verify:all` 用 3100 隔离库跑完，Task 2/3/4/6 全绿。
+- 未验证：浏览器渲染冒烟未执行（无 Chromium/设备）；APK 未重编译。
+- 未 commit/push；等用户放行。
+
+## 2026-10-20 APK 真机安装/运行（荣耀平板 X9）
+
+- 无线调试配对并连接：`192.168.0.67:44641`（`NDL-W09`，Android 16 / SDK 36；物理分辨率 1200×1920）。
+- 平板到 `192.168.0.188:3000` 的 ping 与 TCP 均不通；Windows API 当前未运行，因此不能用现有 LAN 构建做真机数据验证。
+- 测试构建：`VITE_API_BASE=http://localhost:3000 VITE_SOCKET_URL=http://localhost:3000 VITE_SOCKET_TOKEN=vmi-tis-dev-token npm run build -w @vmi-tis/web` → `npx cap sync android` → `./gradlew assembleDebug`；`adb reverse tcp:3000 tcp:3100` 把平板 `localhost:3000` 隧道到 WSL API 3100。
+- 包体核验：包名 `com.vmitis.pad`、versionName `1.0`、minSdk 22 / targetSdk 34；`apksigner verify` 通过；bundle 含 `redZoneCodes`（最新前端）。
+- `adb install -r` 成功；启动进入教师工作台，数据为在训 5 / 待晋级 2 / 全员 6；切学生 Pad 显示周子墨、数字额度 900s、评估出示按钮与四款游戏。截图 `/tmp/vmi-pad-screen.png`、`/tmp/vmi-pad-student.png`（本机临时，未入库）。
+- 未验证：LAN 部署构建（需 Windows API 运行 + 3000 入站放行）。当前安装的是 localhost 测试构建，依赖 `adb reverse`。

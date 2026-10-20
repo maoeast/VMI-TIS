@@ -232,6 +232,8 @@ export interface TriagePayload {
   studentId: string;
   behaviorItems: Array<{ item: string; score: number }>;
   redZoneItems?: string[];
+  /** 结构化红区编码（种子 RED_ZONE_TRIAGE_ITEMS.code），服务端按种子重算。 */
+  redZoneCodes?: string[];
 }
 
 export interface CreateAssessmentRecordPayload
