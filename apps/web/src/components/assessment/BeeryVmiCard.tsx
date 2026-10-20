@@ -1,11 +1,33 @@
 import { useState } from 'react';
 import { BEERY_VMI_6_ITEMS } from '@vmi-tis/shared-types/assessment-seed';
 
-export function BeeryVmiCard() {
-  const [itemNumber, setItemNumber] = useState(1);
+interface BeeryVmiCardProps {
+  /** 受控题号；不传时使用组件内部状态（学生端出示与评估题卡保持原行为）。 */
+  itemNumber?: number;
+  onItemNumberChange?: (itemNumber: number) => void;
+  /** 传入后显示 1/0 判分按钮；不传时只看不出分。 */
+  onScore?: (score: 0 | 1) => void;
+  scoreDisabled?: boolean;
+}
+
+export function BeeryVmiCard({
+  itemNumber: controlledItemNumber,
+  onItemNumberChange,
+  onScore,
+  scoreDisabled = false,
+}: BeeryVmiCardProps) {
+  const [internalItemNumber, setInternalItemNumber] = useState(1);
+  const itemNumber = controlledItemNumber ?? internalItemNumber;
   const item =
     BEERY_VMI_6_ITEMS.find((entry) => entry.itemNumber === itemNumber) ??
     BEERY_VMI_6_ITEMS[0];
+
+  const selectItemNumber = (next: number) => {
+    if (controlledItemNumber === undefined) {
+      setInternalItemNumber(next);
+    }
+    onItemNumberChange?.(next);
+  };
 
   return (
     <div className="space-y-4">
@@ -15,7 +37,7 @@ export function BeeryVmiCard() {
           <select
             className="input mt-1 w-64"
             value={itemNumber}
-            onChange={(event) => setItemNumber(Number(event.target.value))}
+            onChange={(event) => selectItemNumber(Number(event.target.value))}
           >
             {BEERY_VMI_6_ITEMS.map((entry) => (
               <option key={entry.itemNumber} value={entry.itemNumber}>
@@ -66,8 +88,32 @@ export function BeeryVmiCard() {
           </p>
         </div>
       </div>
+
+      {onScore && (
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            disabled={scoreDisabled}
+            className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 px-4 py-4 text-sm font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => onScore(1)}
+          >
+            通过（1 分）
+          </button>
+          <button
+            type="button"
+            disabled={scoreDisabled}
+            className="rounded-2xl border-2 border-rose-300 bg-white px-4 py-4 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => onScore(0)}
+          >
+            未通过（0 分）
+          </button>
+        </div>
+      )}
+
       <p className="text-[11px] text-slate-400">
-        SVG 范图直接读取种子文件的 `svgRenderPaths`；本面板用于出示与对照，不自动计分。
+        {onScore
+          ? '判分提交到 R2 连续 0 分计数；连续 3 题 0 分会自动中止本轮，原始分需点「确认原始分」后写入记录。'
+          : 'SVG 范图直接读取种子文件的 `svgRenderPaths`；本面板用于出示与对照，不自动计分。'}
       </p>
     </div>
   );

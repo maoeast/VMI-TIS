@@ -454,6 +454,214 @@ async function main() {
     `status=${records.status}, total=${records.body?.total}`,
   );
 
+  // ===== b2 评估中心 5 步向导数据链：阶段透传、R2 阶段隔离、原始分确认 =====
+  const scaleCall = (studentId, evalPhase, sessionId, extra = {}) =>
+    call('/assessments/scale-score', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ studentId, evalPhase, sessionId, ...extra }),
+    });
+
+  // R2 会话键 = studentId:evalPhase:sessionId：同一学生、同一 sessionId、两个阶段互不影响。
+  const phaseSession = 'verify-task3-phase-isolation';
+  await scaleCall(lin.id, 'BASELINE', phaseSession, { reset: true });
+  await scaleCall(lin.id, 'STAGE_8W', phaseSession, { reset: true });
+  const baselinePhaseOne = await scaleCall(lin.id, 'BASELINE', phaseSession, {
+    score: 1,
+  });
+  const baselinePhaseTwo = await scaleCall(lin.id, 'BASELINE', phaseSession, {
+    score: 1,
+  });
+  const stagePhaseOne = await scaleCall(lin.id, 'STAGE_8W', phaseSession, {
+    score: 0,
+  });
+  check(
+    'R2 阶段隔离：BASELINE 累计 2 分时 STAGE_8W 仍从 0 开始',
+    baselinePhaseOne.body.totalRawScore === 1 &&
+      baselinePhaseTwo.body.totalRawScore === 2 &&
+      baselinePhaseTwo.body.submittedItems === 2 &&
+      stagePhaseOne.body.totalRawScore === 0 &&
+      stagePhaseOne.body.submittedItems === 1 &&
+      stagePhaseOne.body.shouldTerminate === false,
+    JSON.stringify({
+      baseline: baselinePhaseTwo.body,
+      stage: stagePhaseOne.body,
+    }),
+  );
+
+  const stagePhaseZeroTwo = await scaleCall(
+    lin.id,
+    'STAGE_8W',
+    phaseSession,
+    { score: 0 },
+  );
+  const stagePhaseZeroThree = await scaleCall(
+    lin.id,
+    'STAGE_8W',
+    phaseSession,
+    { score: 0 },
+  );
+  check(
+    'STAGE_8W Beery 主测验连续 3 题 0 分触发 R2 中止',
+    stagePhaseZeroTwo.body.shouldTerminate === false &&
+      stagePhaseZeroThree.body.shouldTerminate === true &&
+      stagePhaseZeroThree.body.consecutiveZeroCount === 3 &&
+      stagePhaseZeroThree.body.totalRawScore === 0,
+    JSON.stringify({
+      second: stagePhaseZeroTwo.body,
+      third: stagePhaseZeroThree.body,
+    }),
+  );
+
+  const stagePhaseReset = await scaleCall(lin.id, 'STAGE_8W', phaseSession, {
+    reset: true,
+  });
+  const stagePhaseAfterReset = await scaleCall(
+    lin.id,
+    'STAGE_8W',
+    phaseSession,
+    { score: 1 },
+  );
+  const baselineAfterStageReset = await scaleCall(
+    lin.id,
+    'BASELINE',
+    phaseSession,
+    { score: 1 },
+  );
+  check(
+    'STAGE_8W reset 只清本阶段，BASELINE 累计分保留',
+    stagePhaseReset.body.submittedItems === 0 &&
+      stagePhaseAfterReset.body.submittedItems === 1 &&
+      stagePhaseAfterReset.body.totalRawScore === 1 &&
+      baselineAfterStageReset.body.submittedItems === 3 &&
+      baselineAfterStageReset.body.totalRawScore === 3,
+    JSON.stringify({
+      reset: stagePhaseReset.body,
+      stage: stagePhaseAfterReset.body,
+      baseline: baselineAfterStageReset.body,
+    }),
+  );
+
+  // “确认原始分”链路：R2 totalRawScore → recordForm.beeryVmiRaw → 记录原始分与标准分。
+  const beeryConfirmSession = 'verify-task3-beery-confirm';
+  await scaleCall(lin.id, 'STAGE_8W', beeryConfirmSession, { reset: true });
+  let beeryScoreResult = null;
+  for (let index = 0; index < 12; index += 1) {
+    beeryScoreResult = await scaleCall(
+      lin.id,
+      'STAGE_8W',
+      beeryConfirmSession,
+      { score: 1 },
+    );
+  }
+  check(
+    'Beery 主测验逐题判分累计原始分 12',
+    beeryScoreResult.body.totalRawScore === 12 &&
+      beeryScoreResult.body.submittedItems === 12 &&
+      beeryScoreResult.body.shouldTerminate === false,
+    JSON.stringify(beeryScoreResult.body),
+  );
+
+  const stageRecord = await createRecord(lin.id, {
+    evalPhase: 'STAGE_8W',
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiRaw: beeryScoreResult.body.totalRawScore,
+    tvps4RawScores: tvpsRawInput,
+    demRaw: demRawInput,
+    classroomAdaptationPass: true,
+  });
+  const stageMeta = JSON.parse(stageRecord.body.assessmentMetaJson);
+  check(
+    'STAGE_8W 记录落盘 evalPhase 与确认后的 Beery 原始分',
+    stageRecord.status === 201 &&
+      stageRecord.body.evalPhase === 'STAGE_8W' &&
+      stageRecord.body.beeryVmiRaw === 12 &&
+      stageRecord.body.beeryVmiStd === beeryExpected.standardScore &&
+      stageMeta.raw?.beeryVmiRaw === 12,
+    JSON.stringify({
+      status: stageRecord.status,
+      phase: stageRecord.body?.evalPhase,
+      raw: stageRecord.body?.beeryVmiRaw,
+      std: stageRecord.body?.beeryVmiStd,
+      expectedStd: beeryExpected.standardScore,
+      metaRaw: stageMeta.raw,
+    }),
+  );
+  check(
+    'STAGE_8W 记录保存 TVPS-4 七项与 DEM 原始输入',
+    stageMeta.raw?.tvps4RawScores?.DIS === tvpsRawInput.DIS &&
+      stageMeta.raw?.tvps4RawScores?.CLO === tvpsRawInput.CLO &&
+      stageMeta.raw?.demRaw?.testAVerticalSec === demRawInput.testAVerticalSec &&
+      stageMeta.raw?.demRaw?.omissionErrors === demRawInput.omissionErrors &&
+      stageRecord.body.tvps4Std === tvpsExpected.overallStandardScore &&
+      stageRecord.body.demNormTier === demExpected.behaviorType,
+    JSON.stringify({
+      tvps4Std: stageRecord.body?.tvps4Std,
+      expectedTvps: tvpsExpected.overallStandardScore,
+      demTier: stageRecord.body?.demNormTier,
+      expectedDem: demExpected.behaviorType,
+    }),
+  );
+
+  const recordsAfterStage = await call(`/assessments/${lin.id}/records`);
+  check(
+    '评估记录按阶段分组：BASELINE 13 条 + STAGE_8W 1 条',
+    recordsAfterStage.status === 200 &&
+      recordsAfterStage.body.total === 14 &&
+      recordsAfterStage.body.groups.BASELINE.length === 13 &&
+      recordsAfterStage.body.groups.STAGE_8W.length === 1 &&
+      recordsAfterStage.body.groups.STAGE_8W[0].evalPhase === 'STAGE_8W',
+    JSON.stringify({
+      total: recordsAfterStage.body?.total,
+      baseline: recordsAfterStage.body?.groups?.BASELINE?.length,
+      stage: recordsAfterStage.body?.groups?.STAGE_8W?.length,
+    }),
+  );
+
+  const stageFiltered = await call(
+    `/assessments/${lin.id}/records?evalPhase=STAGE_8W`,
+  );
+  check(
+    '按 evalPhase 过滤只返回 STAGE_8W 记录',
+    stageFiltered.status === 200 &&
+      stageFiltered.body.total === 1 &&
+      stageFiltered.body.records.every(
+        (item) => item.evalPhase === 'STAGE_8W',
+      ),
+    JSON.stringify({
+      total: stageFiltered.body?.total,
+      phases: stageFiltered.body?.records?.map((item) => item.evalPhase),
+    }),
+  );
+
+  const stageReport = await call(
+    `/assessments/${stageRecord.body.id}/generate-report`,
+    { method: 'POST' },
+  );
+  const stageReportPage = await fetch(
+    `${ORIGIN}${stageReport.body.reportFileUrl}`,
+  );
+  const stageReportHtml = await stageReportPage.text();
+  check(
+    'STAGE_8W HTML 报告可访问且标注评估阶段',
+    stageReport.status === 201 &&
+      stageReport.body.format === 'html' &&
+      stageReportPage.status === 200 &&
+      stageReportHtml.includes('STAGE_8W') &&
+      stageReportHtml.includes(linDetail.body.name),
+    JSON.stringify({
+      status: stageReport.status,
+      format: stageReport.body?.format,
+      page: stageReportPage.status,
+    }),
+  );
+
+  // 清理本段使用的 R2 会话，避免影响后续用例。
+  await scaleCall(lin.id, 'BASELINE', phaseSession, { reset: true });
+  await scaleCall(lin.id, 'STAGE_8W', phaseSession, { reset: true });
+  await scaleCall(lin.id, 'STAGE_8W', beeryConfirmSession, { reset: true });
+
   const report = await call(`/assessments/${l2.body.id}/generate-report`, {
     method: 'POST',
   });

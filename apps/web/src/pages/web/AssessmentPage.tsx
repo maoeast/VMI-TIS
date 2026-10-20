@@ -1,20 +1,15 @@
-import { useEffect, useState } from 'react';
-import {
-  AlertTriangle,
-  ClipboardCheck,
-  FileText,
-  RefreshCw,
-  ShieldAlert,
-} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { RefreshCw, ShieldAlert } from 'lucide-react';
 import type {
   AssessmentMeta,
   AssessmentRecord,
   AssessmentTriageReferral,
 } from '@vmi-tis/shared-types';
+import { EvalPhase } from '@vmi-tis/shared-types';
 import {
+  BEERY_VMI_6_ITEMS,
   BEHAVIOR_SCREENING_ITEMS,
   MILESTONE_0_TO_6_CHECKLIST,
-  OPTOMETRY_NORMS,
   RED_ZONE_TRIAGE_ITEMS,
 } from '@vmi-tis/shared-types/assessment-seed';
 import {
@@ -27,55 +22,40 @@ import {
   type ScaleScoreResponse,
   type StudentDetail,
 } from '../../api/client';
-import { AssessmentCardPanel } from '../../components/assessment/AssessmentCardPanel';
-import { NsucoPanel } from '../../components/assessment/NsucoPanel';
+import { AssessmentStepper } from '../../components/assessment/AssessmentStepper';
+import { OptometryPanel } from '../../components/assessment/OptometryPanel';
+import {
+  EMPTY_RECORD_FORM,
+  RecordSummary,
+  hasAnyMeasurement,
+  type AssessmentRecordForm,
+  type NumericRecordField,
+  type RecordFormField,
+} from '../../components/assessment/RecordSummary';
+import { ScaleAssessmentPanel } from '../../components/assessment/ScaleAssessmentPanel';
 import {
   ScreeningForms,
   type ScreeningSelection,
 } from '../../components/assessment/ScreeningForms';
+import {
+  StudentPhaseSelector,
+  type EvalPhaseKey,
+} from '../../components/assessment/StudentPhaseSelector';
 import { PageHeader } from '../../components/PageHeader';
 import { useAppStore } from '../../store/useAppStore';
 import {
   evalPhaseLabel,
-  formatDate,
-  formatDateTime,
-  levelLabel,
   triageBadgeClass,
   triageLabel,
 } from '../../utils/format';
 
-type TabKey = 'scale' | 'triage' | 'cards' | 'records';
-
-const EMPTY_RECORD_FORM = {
-  npcCm: '',
-  accomFacilityCpm: '',
-  tvps4Std: '',
-  mvpt3Std: '',
-  beeryVmiStd: '',
-  beeryVmiRaw: '',
-  beeryVpStd: '',
-  beeryVpRaw: '',
-  beeryMcStd: '',
-  beeryMcRaw: '',
-  quadrupedHoldSec: '',
-  classroomCopyAccuracyPct: '',
-  tvpsDIS: '',
-  tvpsMEM: '',
-  tvpsSPA: '',
-  tvpsCON: '',
-  tvpsSEQ: '',
-  tvpsFGR: '',
-  tvpsCLO: '',
-  demAVerticalSec: '',
-  demBVerticalSec: '',
-  demCHorizontalSec: '',
-  demOmissionErrors: '',
-  demAdditionErrors: '',
-  stabilityPass: true,
-  classroomAdaptationPass: true,
-  nsucoPursuit: 3,
-  nsucoSaccade: 3,
-};
+const STEP_DEFS = [
+  { index: 1, title: '选学生与阶段', hint: '对象与阶段' },
+  { index: 2, title: '初筛与红区', hint: 'R1 门禁' },
+  { index: 3, title: '视光与眼动', hint: '可跳过' },
+  { index: 4, title: '量表施测', hint: 'Beery / R2' },
+  { index: 5, title: '汇总与报告', hint: '保存与定级' },
+];
 
 function monthsBetween(birthDate: Date, now = new Date()): number {
   let months =
@@ -91,12 +71,21 @@ export function AssessmentPage() {
   const activeStudentId = useAppStore((state) => state.activeStudentId);
   const showToast = useAppStore((state) => state.showToast);
 
-  const [tab, setTab] = useState<TabKey>('scale');
-  const [sessionId] = useState(() => `scale-${Date.now()}`);
-  const [itemIndex, setItemIndex] = useState(1);
+  const [step, setStep] = useState(1);
+  const [evalPhase, setEvalPhase] = useState<EvalPhaseKey>(EvalPhase.BASELINE);
+  const [sessionId, setSessionId] = useState(() => `scale-${Date.now()}`);
+  const [beeryItemNumber, setBeeryItemNumber] = useState(1);
   const [scaleResult, setScaleResult] = useState<ScaleScoreResponse | null>(null);
-  const [recordForm, setRecordForm] = useState(EMPTY_RECORD_FORM);
-  const [recordResult, setRecordResult] = useState<AssessmentRecord | null>(null);
+  const [recordForm, setRecordForm] =
+    useState<AssessmentRecordForm>(EMPTY_RECORD_FORM);
+  const [savedRecord, setSavedRecord] = useState<AssessmentRecord | null>(null);
+  const [recordMeta, setRecordMeta] = useState<AssessmentMeta | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [submittingScore, setSubmittingScore] = useState(false);
+  const scoredItems = useRef<Set<number>>(new Set());
+  const [report, setReport] = useState<{ recordId: string; url: string } | null>(
+    null,
+  );
 
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const [screening, setScreening] = useState<ScreeningSelection>({
@@ -104,51 +93,73 @@ export function AssessmentPage() {
     milestones: [],
     behaviors: [],
   });
-  const [recordMeta, setRecordMeta] = useState<AssessmentMeta | null>(null);
-  const [triageResult, setTriageResult] = useState<AssessmentTriageReferral | null>(null);
+  const [triageResult, setTriageResult] =
+    useState<AssessmentTriageReferral | null>(null);
   const [referrals, setReferrals] = useState<AssessmentTriageReferral[]>([]);
   const [referralForms, setReferralForms] = useState<
     Record<string, { hospitalName: string; hospitalDiagnosis: string }>
   >({});
 
   const [records, setRecords] = useState<AssessmentRecordsResponse | null>(null);
-  const [reportUrl, setReportUrl] = useState<string | null>(null);
+
+  const isStillActiveStudent = (studentId: string) =>
+    useAppStore.getState().activeStudentId === studentId;
 
   const loadReferrals = async () => {
-    if (!activeStudentId) return;
+    const studentId = activeStudentId;
+    if (!studentId) return;
     try {
-      setReferrals(await triageApi.list(activeStudentId));
+      const data = await triageApi.list(studentId);
+      if (!isStillActiveStudent(studentId)) return;
+      setReferrals(data);
     } catch {
+      if (!isStillActiveStudent(studentId)) return;
       setReferrals([]);
     }
   };
 
   const loadRecords = async () => {
-    if (!activeStudentId) return;
+    const studentId = activeStudentId;
+    if (!studentId) return;
     try {
-      setRecords(await assessmentApi.records(activeStudentId));
+      const data = await assessmentApi.records(studentId);
+      if (!isStillActiveStudent(studentId)) return;
+      setRecords(data);
     } catch {
+      if (!isStillActiveStudent(studentId)) return;
       setRecords(null);
     }
   };
 
   const loadStudent = async () => {
-    if (!activeStudentId) {
+    const studentId = activeStudentId;
+    if (!studentId) {
       setStudent(null);
       return;
     }
     try {
-      setStudent(await studentApi.get(activeStudentId));
+      const data = await studentApi.get(studentId);
+      if (!isStillActiveStudent(studentId)) return;
+      setStudent(data);
     } catch {
+      if (!isStillActiveStudent(studentId)) return;
       setStudent(null);
     }
   };
 
   useEffect(() => {
-    setRecordResult(null);
-    setRecordMeta(null);
+    setStep(1);
+    setSessionId(`scale-${Date.now()}`);
+    setBeeryItemNumber(1);
+    setScaleResult(null);
+    scoredItems.current.clear();
     setRecordForm(EMPTY_RECORD_FORM);
+    setSavedRecord(null);
+    setRecordMeta(null);
+    setReport(null);
     setScreening({ red: [], milestones: [], behaviors: [] });
+    setTriageResult(null);
+    setReferralForms({});
     void loadReferrals();
     void loadRecords();
     void loadStudent();
@@ -156,57 +167,99 @@ export function AssessmentPage() {
   }, [activeStudentId]);
 
   const updateRecordField = (
-    key: keyof typeof EMPTY_RECORD_FORM,
+    field: RecordFormField,
     value: string | boolean | number,
   ) => {
-    setRecordForm((prev) => ({ ...prev, [key]: value }) as typeof prev);
+    setRecordForm(
+      (prev) => ({ ...prev, [field]: value }) as AssessmentRecordForm,
+    );
+  };
+
+  const updateNumberField = (field: NumericRecordField, value: string) => {
+    updateRecordField(field, value);
   };
 
   const numberOrUndefined = (value: string): number | undefined =>
     value.trim() === '' ? undefined : Number(value);
 
   const birthDate = student ? new Date(String(student.birthDate)) : undefined;
-  const ageMonths = birthDate ? monthsBetween(birthDate) : undefined;
+  const ageMonths =
+    birthDate && !Number.isNaN(birthDate.getTime())
+      ? monthsBetween(birthDate)
+      : undefined;
   const ageYears = ageMonths !== undefined ? ageMonths / 12 : undefined;
 
-  const numberField = (
-    key: keyof typeof EMPTY_RECORD_FORM,
-    label: string,
-  ) => (
-    <label key={key} className="text-xs font-semibold text-slate-600">
-      {label}
-      <input
-        type="number"
-        value={String(recordForm[key])}
-        onChange={(event) => updateRecordField(key, event.target.value)}
-        className="input mt-1"
-      />
-    </label>
-  );
+  const triageStatus: string = student?.triageStatus ?? 'PENDING_SCREENING';
+  const waitingScreening = triageStatus === 'PENDING_SCREENING';
+  const redZoneGated =
+    triageStatus === 'RED_ZONE_LOCKED' ||
+    triageStatus === 'REFERRAL_UPLOADED';
 
+  const disabledSteps = !activeStudentId
+    ? [2, 3, 4, 5]
+    : waitingScreening
+      ? [3, 4, 5]
+      : redZoneGated
+        ? [3, 4]
+        : [];
 
-  const submitScore = async (score: number) => {
+  const beeryCompleted =
+    (scaleResult?.submittedItems ?? 0) >= BEERY_VMI_6_ITEMS.length;
+
+  const changeEvalPhase = (next: EvalPhaseKey) => {
+    if (next === evalPhase) return;
+    setEvalPhase(next);
+    setSessionId(`scale-${Date.now()}`);
+    setBeeryItemNumber(1);
+    setScaleResult(null);
+    scoredItems.current.clear();
+    setRecordForm(EMPTY_RECORD_FORM);
+    setSavedRecord(null);
+    setRecordMeta(null);
+    setReport(null);
+    showToast(
+      `已切换到${evalPhaseLabel(next)}，评估草稿已清空，R2 按新阶段独立计数`,
+      'info',
+    );
+  };
+
+  const submitScore = async (score: 0 | 1) => {
     if (!activeStudentId) {
       showToast('请先在顶部选择学生', 'error');
       return;
     }
+    if (waitingScreening || redZoneGated) {
+      showToast('当前学生被初筛/红区门禁拦截，暂不能施测量表', 'error');
+      return;
+    }
+    if (submittingScore) return;
+    if (scoredItems.current.has(beeryItemNumber)) {
+      showToast('该题已判分，不能重复计分；如需重测请先重置本轮', 'error');
+      return;
+    }
+    setSubmittingScore(true);
     try {
+      const itemNumber = beeryItemNumber;
       const result = await assessmentApi.submitScaleScore({
         studentId: activeStudentId,
-        evalPhase: 'BASELINE',
+        evalPhase,
         sessionId,
-        itemIndex,
+        itemIndex: itemNumber,
         score,
       });
+      scoredItems.current.add(itemNumber);
       setScaleResult(result);
-      if (!result.shouldTerminate) {
-        setItemIndex((value) => value + 1);
-      }
       if (result.shouldTerminate) {
         showToast(result.message ?? '已触发连续 3 题 0 分中止', 'error');
+      } else {
+        setBeeryItemNumber((value) =>
+          Math.min(BEERY_VMI_6_ITEMS.length, value + 1),
+        );
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setSubmittingScore(false);
     }
   };
 
@@ -215,23 +268,65 @@ export function AssessmentPage() {
     try {
       await assessmentApi.submitScaleScore({
         studentId: activeStudentId,
-        evalPhase: 'BASELINE',
+        evalPhase,
         sessionId,
         reset: true,
       });
       setScaleResult(null);
-      setItemIndex(1);
+      setBeeryItemNumber(1);
+      scoredItems.current.clear();
+      setRecordForm((prev) => ({ ...prev, beeryVmiRaw: '' }));
       showToast('本轮施测计数已重置', 'info');
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     }
   };
 
+  const confirmRawScore = () => {
+    if (!scaleResult) {
+      showToast('还没有可确认的 R2 判分结果', 'error');
+      return;
+    }
+    updateRecordField('beeryVmiRaw', String(scaleResult.totalRawScore));
+    showToast(
+      `已将本轮累计原始分 ${scaleResult.totalRawScore} 写入 Beery 主测验原始分`,
+      'success',
+    );
+  };
+
+  const generateReport = async (recordId: string, openInNewTab = true) => {
+    try {
+      const result = await assessmentApi.generateReport(recordId);
+      const resolved = resolveApiUrl(result.reportFileUrl);
+      setReport({ recordId, url: resolved });
+      if (openInNewTab) {
+        window.open(resolved, '_blank', 'noopener,noreferrer');
+      }
+      showToast('评估报告已生成（HTML）', 'success');
+      await loadRecords();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : String(err), 'error');
+    }
+  };
+
   const saveRecord = async () => {
+    if (savedRecord) {
+      showToast('本次评估已保存；如需重新录入请点「新建一次评估」', 'info');
+      return;
+    }
     if (!activeStudentId) {
       showToast('请先在顶部选择学生', 'error');
       return;
     }
+    if (waitingScreening) {
+      showToast('请先在第 2 步提交初筛', 'error');
+      return;
+    }
+    if (!redZoneGated && !hasAnyMeasurement(recordForm)) {
+      showToast('请至少录入一项视光或量表数据后再保存', 'error');
+      return;
+    }
+
     const tvps4RawScores =
       recordForm.tvpsDIS !== '' &&
       recordForm.tvpsMEM !== '' &&
@@ -265,10 +360,11 @@ export function AssessmentPage() {
           }
         : undefined;
 
+    setSaving(true);
     try {
       const record = await assessmentApi.createRecord({
         studentId: activeStudentId,
-        evalPhase: 'BASELINE',
+        evalPhase,
         npcCm: numberOrUndefined(recordForm.npcCm),
         accomFacilityCpm: numberOrUndefined(recordForm.accomFacilityCpm),
         tvps4Std: numberOrUndefined(recordForm.tvps4Std),
@@ -292,15 +388,48 @@ export function AssessmentPage() {
         stabilityPass: recordForm.stabilityPass,
         classroomAdaptationPass: recordForm.classroomAdaptationPass,
       });
-      setRecordResult(record);
+      setSavedRecord(record);
       setRecordMeta(
         parseJson<AssessmentMeta | null>(record.assessmentMetaJson, null),
       );
       showToast(`评估已保存，自动定级 ${record.autoLevel}`, 'success');
       await loadRecords();
+      await loadStudent();
+
+      // 报告失败不阻塞保存：保存结果与定级已落在页面上。
+      try {
+        const reportResult = await assessmentApi.generateReport(record.id);
+        setReport({
+          recordId: record.id,
+          url: resolveApiUrl(reportResult.reportFileUrl),
+        });
+        await loadRecords();
+      } catch (reportErr) {
+        showToast(
+          `评估已保存，但报告生成失败：${
+            reportErr instanceof Error ? reportErr.message : String(reportErr)
+          }`,
+          'error',
+        );
+      }
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const resetAssessment = () => {
+    setStep(1);
+    setSessionId(`scale-${Date.now()}`);
+    setBeeryItemNumber(1);
+    setScaleResult(null);
+    setRecordForm(EMPTY_RECORD_FORM);
+    setSavedRecord(null);
+    setRecordMeta(null);
+    setReport(null);
+    scoredItems.current.clear();
+    showToast('已清空本次评估草稿，可开始一次新的评估', 'info');
   };
 
   const submitTriage = async () => {
@@ -346,6 +475,8 @@ export function AssessmentPage() {
         result.isRedZone ? 'error' : 'success',
       );
       await loadReferrals();
+      // 门禁读取服务端 triageStatus，提交后立即刷新。
+      await loadStudent();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     }
@@ -381,6 +512,7 @@ export function AssessmentPage() {
       });
       showToast('回执已上传，等待视光师审核', 'success');
       await loadReferrals();
+      await loadStudent();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     }
@@ -403,470 +535,338 @@ export function AssessmentPage() {
         auditStatus === 'APPROVED' ? 'success' : 'error',
       );
       await loadReferrals();
+      await loadStudent();
     } catch (err) {
       showToast(err instanceof Error ? err.message : String(err), 'error');
     }
   };
 
-  const generateReport = async (recordId: string) => {
-    try {
-      const result = await assessmentApi.generateReport(recordId);
-      const resolved = resolveApiUrl(result.reportFileUrl);
-      setReportUrl(resolved);
-      window.open(resolved, '_blank', 'noopener,noreferrer');
-      showToast('评估报告已生成', 'success');
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : String(err), 'error');
-    }
-  };
+  const nextStep =
+    step === 1
+      ? 2
+      : step === 2
+        ? redZoneGated
+          ? 5
+          : 3
+        : step === 3
+          ? 4
+          : step === 4
+            ? 5
+            : null;
+  const nextDisabled =
+    (step === 1 && !activeStudentId) ||
+    (step === 2 && waitingScreening) ||
+    ((step === 3 || step === 4) && (waitingScreening || redZoneGated));
 
-  const lastThree = scaleResult?.lastThree ?? [];
-  const zeroCount = scaleResult?.consecutiveZeroCount ?? 0;
+  let prevStep = step - 1;
+  while (prevStep > 1 && disabledSteps.includes(prevStep)) {
+    prevStep -= 1;
+  }
+
+  const gateMessage = !activeStudentId
+    ? '请先在顶部选择学生'
+    : waitingScreening
+      ? '待初筛：请先在第 2 步提交初筛问卷'
+      : redZoneGated
+        ? '红区 / 回执待审核：步骤 3–4 已禁用，可保存初筛级 L0 记录（会把当前层级回写为 L0）'
+        : '绿区放行：可完成完整评估';
+
+  const canSave =
+    Boolean(activeStudentId) &&
+    !waitingScreening &&
+    !savedRecord &&
+    (redZoneGated || hasAnyMeasurement(recordForm));
+
+  const blockedReason = !activeStudentId
+    ? '请先在顶部选择学生'
+    : waitingScreening
+      ? '请先在第 2 步提交初筛，之后才能保存评估记录。'
+      : !redZoneGated && !hasAnyMeasurement(recordForm)
+        ? '请至少录入一项视光或量表数据（红区 L0 记录可只带初筛）。'
+        : undefined;
 
   return (
     <div>
       <PageHeader
         title="评估中心"
-        description="电子量表施测、入案初筛红区熔断、专科评估报告库"
+        description="5 步向导：选学生与阶段 → 初筛门禁 → 视光与眼动 → 量表施测 → 汇总与报告"
         actions={
-          <button type="button" className="btn-secondary" onClick={() => { void loadReferrals(); void loadRecords(); }}>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => {
+              void loadStudent();
+              void loadReferrals();
+              void loadRecords();
+            }}
+          >
             <RefreshCw className="mr-1 inline h-4 w-4" />
             刷新
           </button>
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-white p-1.5 shadow-sm">
-        {[
-          ['scale', '① 电子量表施测台'],
-          ['triage', '② 初筛与红区转介'],
-          ['cards', '③ 量表题卡'],
-          ['records', '④ 评估报告库'],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key as TabKey)}
-            className={
-              tab === key
-                ? 'rounded-lg bg-[#0F4C5C] px-3.5 py-2 text-xs font-bold text-white'
-                : 'rounded-lg px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100'
-            }
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <AssessmentStepper
+        steps={STEP_DEFS}
+        current={step}
+        disabled={disabledSteps}
+        onSelect={(target) => {
+          if (!disabledSteps.includes(target)) {
+            setStep(target);
+          }
+        }}
+      />
 
-      {tab === 'scale' && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <section className="card p-5">
-            <h2 className="text-sm font-bold text-slate-800">逐题判分与 R2 中止</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              每题计 0 / 1 分；最近连续 3 题均为 0 分时自动中止本轮测验。
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                disabled={scaleResult?.shouldTerminate}
-                className="rounded-2xl border-2 border-emerald-600 bg-emerald-50 px-4 py-5 text-sm font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => void submitScore(1)}
-              >
-                <ClipboardCheck className="mx-auto mb-1 h-5 w-5" />
-                通过（1 分）
-              </button>
-              <button
-                type="button"
-                disabled={scaleResult?.shouldTerminate}
-                className="rounded-2xl border-2 border-rose-300 bg-white px-4 py-5 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() => void submitScore(0)}
-              >
-                <AlertTriangle className="mx-auto mb-1 h-5 w-5" />
-                未通过（0 分）
-              </button>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 p-3 text-xs">
-              <span className="font-semibold text-slate-600">
-                第 {itemIndex} 题 · 本会话已提交 {scaleResult?.submittedItems ?? 0} 题
-                · 累计原始分 {scaleResult?.totalRawScore ?? 0}
-              </span>
-              <span
-                className={
-                  zeroCount >= 2
-                    ? 'badge bg-rose-100 text-rose-800'
-                    : 'badge bg-emerald-100 text-emerald-800'
-                }
-              >
-                连续 0 分计数：{zeroCount}/3
-              </span>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              {lastThree.map((score, index) => (
-                <span
-                  key={`${index}-${score}`}
-                  className={
-                    score === 0
-                      ? 'badge bg-rose-100 text-rose-800'
-                      : 'badge bg-emerald-100 text-emerald-800'
-                  }
-                >
-                  {score}
-                </span>
-              ))}
-              <button type="button" className="ml-auto text-xs font-semibold text-teal-700 hover:underline" onClick={() => void resetScale()}>
-                重置本轮
-              </button>
-            </div>
-
-            {scaleResult?.shouldTerminate && (
-              <div className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
-                <div className="font-bold">已自动中止本轮评估</div>
-                <p className="mt-1">{scaleResult.message}</p>
-                <p className="mt-1">
-                  中止时累计原始分：{scaleResult.totalRawScore}；请先记录该分数，再重置本轮。
-                </p>
-              </div>
-            )}
-          </section>
-
-          <section className="card p-5">
-            <h2 className="text-sm font-bold text-slate-800">评估指标与自动定级</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              原始分优先调用种子函数换算；留空时使用标准分或兼容缺省。保存后回写学生当前层级。
-            </p>
-
-            <div className="mt-4 space-y-4">
-              <div>
-                <h3 className="text-xs font-bold text-slate-700">视光与眼动</h3>
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  {numberField('npcCm', 'NPC（cm）')}
-                  {numberField('accomFacilityCpm', '调节灵活度（cpm）')}
-                  {numberField('tvps4Std', 'TVPS-4 标准分')}
-                  {numberField('mvpt3Std', 'MVPT-3 标准分')}
-                </div>
-                <p className="mt-1 text-[11px] text-slate-400">
-                  NPC 正常不高于 {OPTOMETRY_NORMS.npcCutoffCm.normalMax} cm，大于{' '}
-                  {OPTOMETRY_NORMS.npcCutoffCm.insufficiencyThreshold} cm 提示集合不足；
-                  调节灵活度正常不低于{' '}
-                  {OPTOMETRY_NORMS.accomFacilityCpmCutoff.normalMin} cpm，低于{' '}
-                  {OPTOMETRY_NORMS.accomFacilityCpmCutoff.lagThreshold} cpm 提示调节滞后。
-                  {ageYears !== undefined &&
-                    ` 该年龄最小预期调节幅度约 ${OPTOMETRY_NORMS.minExpectedAccomAmplitudeD(ageYears)} D。`}
-                </p>
-                <div className="mt-3">
-                  <NsucoPanel
-                    pursuit={recordForm.nsucoPursuit}
-                    saccade={recordForm.nsucoSaccade}
-                    onChange={(field, value) =>
-                      updateRecordField(
-                        field === 'pursuit' ? 'nsucoPursuit' : 'nsucoSaccade',
-                        value,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-
-              <details open className="rounded-xl border border-slate-200 p-3">
-                <summary className="cursor-pointer text-xs font-bold text-slate-700">
-                  Beery VMI-6（原始分优先）
-                </summary>
-                <div className="mt-2 grid grid-cols-2 gap-3">
-                  {numberField('beeryVmiRaw', '主测验原始分（0–30）')}
-                  {numberField('beeryVmiStd', '主测验标准分')}
-                  {numberField('beeryVpRaw', 'VP 补充原始分')}
-                  {numberField('beeryVpStd', 'VP 标准分')}
-                  {numberField('beeryMcRaw', 'MC 补充原始分')}
-                  {numberField('beeryMcStd', 'MC 标准分')}
-                </div>
-              </details>
-
-              <details className="rounded-xl border border-slate-200 p-3">
-                <summary className="cursor-pointer text-xs font-bold text-slate-700">
-                  TVPS-4 七项原始分（全部填写才换算）
-                </summary>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {numberField('tvpsDIS', 'DIS')}
-                  {numberField('tvpsMEM', 'MEM')}
-                  {numberField('tvpsSPA', 'SPA')}
-                  {numberField('tvpsCON', 'CON')}
-                  {numberField('tvpsSEQ', 'SEQ')}
-                  {numberField('tvpsFGR', 'FGR')}
-                  {numberField('tvpsCLO', 'CLO')}
-                </div>
-              </details>
-
-              <details className="rounded-xl border border-slate-200 p-3">
-                <summary className="cursor-pointer text-xs font-bold text-slate-700">
-                  DEM 原始输入（全部填写才换算）
-                </summary>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  {numberField('demAVerticalSec', 'Test A 纵向（秒）')}
-                  {numberField('demBVerticalSec', 'Test B 纵向（秒）')}
-                  {numberField('demCHorizontalSec', 'Test C 横向（秒）')}
-                  {numberField('demOmissionErrors', '漏读字数')}
-                  {numberField('demAdditionErrors', '多读字数')}
-                </div>
-              </details>
-
-              <div>
-                <h3 className="text-xs font-bold text-slate-700">稳定性与课堂应用</h3>
-                <div className="mt-2 space-y-2 text-xs">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={recordForm.stabilityPass}
-                      onChange={(event) =>
-                        updateRecordField('stabilityPass', event.target.checked)
-                      }
-                    />
-                    身体稳定 / 前庭本体评估达标
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={recordForm.classroomAdaptationPass}
-                      onChange={(event) =>
-                        updateRecordField(
-                          'classroomAdaptationPass',
-                          event.target.checked,
-                        )
-                      }
-                    />
-                    课堂抄写 / 文具使用补充评估达标
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {numberField('quadrupedHoldSec', '四点爬行维持（秒）')}
-                    {numberField('classroomCopyAccuracyPct', '课堂抄写正确率（%）')}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-              <button type="button" className="btn-primary" onClick={() => void saveRecord()}>
-                保存评估记录
-              </button>
-              {recordResult && (
-                <span className="badge bg-teal-100 text-teal-800">
-                  自动定级：{levelLabel(recordResult.autoLevel ?? '')}
-                </span>
-              )}
-            </div>
-
-            {recordMeta && (
-              <div className="mt-4 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">
-                <div className="font-bold">
-                  {recordMeta.grading.recommendedLevelLabel}
-                </div>
-                <p className="mt-1">{recordMeta.grading.clinicalBottleneckAnalysis}</p>
-                <p className="mt-1">
-                  推荐操作卡：{recordMeta.grading.recommendedSopCardCodes.join('、')}
-                </p>
-                {recordMeta.dem && (
-                  <p className="mt-1">DEM：{recordMeta.dem.summaryText}</p>
-                )}
-                {recordMeta.tvps4 && (
-                  <p className="mt-1">
-                    TVPS-4 综合标准分：{recordMeta.tvps4.overallStandardScore}
-                  </p>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
+      {step === 1 && (
+        <StudentPhaseSelector
+          student={student}
+          hasActiveStudent={Boolean(activeStudentId)}
+          evalPhase={evalPhase}
+          onEvalPhaseChange={changeEvalPhase}
+        />
       )}
 
-      {tab === 'triage' && (
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <section className="card p-5">
-            <h2 className="text-sm font-bold text-slate-800">入案第一层初筛</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              红区、里程碑与行为筛查均读取种子常量；提交后由服务端重新计算 R1 红区。
-            </p>
-            <div className="mt-4">
-              <ScreeningForms
-                value={screening}
-                onChange={setScreening}
-                ageMonths={ageMonths}
-              />
-            </div>
-            <button type="button" className="btn-primary mt-4" onClick={() => void submitTriage()}>
-              <ShieldAlert className="mr-1 inline h-4 w-4" />
-              提交初筛
-            </button>
-            {triageResult && (
-              <div
-                className={
-                  triageResult.isRedZone
-                    ? 'mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900'
-                    : 'mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900'
-                }
-              >
-                <div className="font-bold">
-                  {triageResult.isRedZone ? '红区锁定' : '绿区通过'}
-                </div>
-                <div className="mt-1">
-                  转介单号：{triageResult.referralCode ?? '无需转介'} · 审核状态：
-                  {triageResult.auditStatus}
-                </div>
-                <div className="mt-1 text-[11px] opacity-80">
-                  红区项：{triageResult.redZoneItemsJson}
-                </div>
-              </div>
-            )}
-          </section>
-
-          <section className="card p-5">
-            <h2 className="text-sm font-bold text-slate-800">眼科转介与回执核验</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              上传回执 → 回执待审核；审核通过解锁训练，驳回则回到红区锁定。
-            </p>
-            <div className="mt-4 space-y-3">
-              {referrals.length === 0 && (
-                <p className="text-xs text-slate-400">暂无转介记录</p>
-              )}
-              {referrals.map((referral) => {
-                const form = referralForms[referral.id] ?? {
-                  hospitalName: '',
-                  hospitalDiagnosis: '',
-                };
-                const redItems = parseJson<string[]>(referral.redZoneItemsJson, []);
-                return (
-                  <div key={referral.id} className="rounded-xl border border-slate-200 p-3 text-xs">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-mono font-semibold text-slate-700">
-                        {referral.referralCode ?? '绿区初筛'}
-                      </span>
-                      <span className={`badge ${triageBadgeClass(referral.isRedZone ? 'RED_ZONE_LOCKED' : 'GREEN_ACTIVE')}`}>
-                        {triageLabel(referral.isRedZone ? 'RED_ZONE_LOCKED' : 'GREEN_ACTIVE')}
-                      </span>
-                      <span className="text-slate-500">{referral.auditStatus}</span>
-                    </div>
-                    <div className="mt-1 text-[11px] text-slate-500">
-                      红区项：{redItems.length ? redItems.join('、') : '无'}
-                    </div>
-                    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <input
-                        value={form.hospitalName}
-                        onChange={(event) =>
-                          updateReferralForm(referral.id, 'hospitalName', event.target.value)
-                        }
-                        placeholder="接诊医院名称"
-                        className="input"
-                      />
-                      <input
-                        value={form.hospitalDiagnosis}
-                        onChange={(event) =>
-                          updateReferralForm(referral.id, 'hospitalDiagnosis', event.target.value)
-                        }
-                        placeholder="医院诊断结论"
-                        className="input"
-                      />
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" className="btn-secondary" onClick={() => void uploadReferral(referral.id)}>
-                        上传回执
-                      </button>
-                      <button type="button" className="btn-primary" onClick={() => void auditReferral(referral.id, 'APPROVED')}>
-                        审核通过
-                      </button>
-                      <button type="button" className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100" onClick={() => void auditReferral(referral.id, 'REJECTED')}>
-                        驳回
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-      )}
-
-      {tab === 'cards' && (
-        <section className="card p-5">
-          <h2 className="text-sm font-bold text-slate-800">量表题卡</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Beery VMI-6 / TVPS-4 / DEM 题卡直接读取种子常量；教师端与学生端共用，出示不自动计分。
-          </p>
-          <div className="mt-4">
-            <AssessmentCardPanel />
-          </div>
-        </section>
-      )}
-
-      {tab === 'records' && (
+      {step === 2 && (
         <div className="space-y-4">
-          {reportUrl && (
-            <div className="card border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
-              报告已生成：
-              <a className="ml-1 font-semibold underline" href={reportUrl} target="_blank" rel="noreferrer">
-                {reportUrl}
-              </a>
+          {waitingScreening && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              待初筛：提交初筛问卷前，步骤 3–5 保持禁用。提交后由服务端按种子编码与行为项文本重算
+              R1 红区。
             </div>
           )}
-          {(['BASELINE', 'STAGE_8W', 'TRANSITION'] as const).map((phase) => {
-            const group = records?.groups?.[phase] ?? [];
-            return (
-              <section key={phase} className="card p-5">
-                <h2 className="text-sm font-bold text-slate-800">
-                  {evalPhaseLabel(phase)}
-                  <span className="ml-2 text-xs font-normal text-slate-400">{group.length} 条</span>
-                </h2>
-                {group.length === 0 ? (
-                  <p className="mt-3 text-xs text-slate-400">暂无记录</p>
-                ) : (
-                  <div className="mt-3 overflow-x-auto">
-                    <table className="w-full min-w-[760px] text-left text-xs">
-                      <thead className="table-head">
-                        <tr>
-                          <th className="px-3 py-2">日期</th>
-                          <th className="px-3 py-2">NPC</th>
-                          <th className="px-3 py-2">调节灵活度</th>
-                          <th className="px-3 py-2">Beery VMI</th>
-                          <th className="px-3 py-2">TVPS-4</th>
-                          <th className="px-3 py-2">定级</th>
-                          <th className="px-3 py-2 text-right">报告</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {group.map((record) => (
-                          <tr key={record.id}>
-                            <td className="px-3 py-2 text-slate-500">{formatDate(record.createdAt)}</td>
-                            <td className="px-3 py-2">{record.npcCm ?? '—'} cm</td>
-                            <td className="px-3 py-2">{record.accomFacilityCpm ?? '—'} cpm</td>
-                            <td className="px-3 py-2">{record.beeryVmiStd ?? '—'}</td>
-                            <td className="px-3 py-2">{record.tvps4Std ?? '—'}</td>
-                            <td className="px-3 py-2">
-                              <span className="badge bg-teal-100 text-teal-800">{record.autoLevel ?? '—'}</span>
-                            </td>
-                            <td className="px-3 py-2 text-right">
-                              <button type="button" className="text-xs font-semibold text-teal-700 hover:underline" onClick={() => void generateReport(record.id)}>
-                                <FileText className="mr-1 inline h-3.5 w-3.5" />
-                                生成报告
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+          {redZoneGated && (
+            <div className="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900">
+              红区 / 回执待审核：步骤 3–4 保持禁用，请继续完成回执上传与审核；仍可前往第 5
+              步保存初筛级 L0 记录。
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+            <section className="card p-5">
+              <h2 className="text-sm font-bold text-slate-800">
+                第二步：入案第一层初筛
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                红区、里程碑与行为筛查均读取种子常量；提交后由服务端重新计算 R1
+                红区，不采信客户端结论。
+              </p>
+              <div className="mt-4">
+                <ScreeningForms
+                  value={screening}
+                  onChange={setScreening}
+                  ageMonths={ageMonths}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-primary mt-4"
+                onClick={() => void submitTriage()}
+              >
+                <ShieldAlert className="mr-1 inline h-4 w-4" />
+                提交初筛
+              </button>
+              {triageResult && (
+                <div
+                  className={
+                    triageResult.isRedZone
+                      ? 'mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900'
+                      : 'mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-xs text-emerald-900'
+                  }
+                >
+                  <div className="font-bold">
+                    {triageResult.isRedZone ? '红区锁定' : '绿区通过'}
                   </div>
+                  <div className="mt-1">
+                    转介单号：{triageResult.referralCode ?? '无需转介'} ·
+                    审核状态：{triageResult.auditStatus}
+                  </div>
+                  <div className="mt-1 text-[11px] opacity-80">
+                    红区项：{triageResult.redZoneItemsJson}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            <section className="card p-5">
+              <h2 className="text-sm font-bold text-slate-800">
+                眼科转介与回执核验
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                上传回执 → 回执待审核；审核通过解锁训练与量表施测，驳回则回到红区锁定。
+              </p>
+              <div className="mt-4 space-y-3">
+                {referrals.length === 0 && (
+                  <p className="text-xs text-slate-400">暂无转介记录</p>
                 )}
-              </section>
-            );
-          })}
-          <p className="text-[11px] text-slate-400">
-            最近一次评估：
-            {records?.records?.[0]
-              ? `${formatDateTime(records.records[0].createdAt)} · 定级 ${
-                  records.records[0].autoLevel ?? '—'
-                }`
-              : '暂无'}
-          </p>
+                {referrals.map((referral) => {
+                  const form = referralForms[referral.id] ?? {
+                    hospitalName: '',
+                    hospitalDiagnosis: '',
+                  };
+                  const redItems = parseJson<string[]>(
+                    referral.redZoneItemsJson,
+                    [],
+                  );
+                  return (
+                    <div
+                      key={referral.id}
+                      className="rounded-xl border border-slate-200 p-3 text-xs"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-mono font-semibold text-slate-700">
+                          {referral.referralCode ?? '绿区初筛'}
+                        </span>
+                        <span
+                          className={`badge ${triageBadgeClass(
+                            referral.isRedZone
+                              ? 'RED_ZONE_LOCKED'
+                              : 'GREEN_ACTIVE',
+                          )}`}
+                        >
+                          {triageLabel(
+                            referral.isRedZone
+                              ? 'RED_ZONE_LOCKED'
+                              : 'GREEN_ACTIVE',
+                          )}
+                        </span>
+                        <span className="text-slate-500">
+                          {referral.auditStatus}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-500">
+                        红区项：{redItems.length ? redItems.join('、') : '无'}
+                      </div>
+                      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input
+                          value={form.hospitalName}
+                          onChange={(event) =>
+                            updateReferralForm(
+                              referral.id,
+                              'hospitalName',
+                              event.target.value,
+                            )
+                          }
+                          placeholder="接诊医院名称"
+                          className="input"
+                        />
+                        <input
+                          value={form.hospitalDiagnosis}
+                          onChange={(event) =>
+                            updateReferralForm(
+                              referral.id,
+                              'hospitalDiagnosis',
+                              event.target.value,
+                            )
+                          }
+                          placeholder="医院诊断结论"
+                          className="input"
+                        />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => void uploadReferral(referral.id)}
+                        >
+                          上传回执
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() =>
+                            void auditReferral(referral.id, 'APPROVED')
+                          }
+                        >
+                          审核通过
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                          onClick={() =>
+                            void auditReferral(referral.id, 'REJECTED')
+                          }
+                        >
+                          驳回
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          </div>
         </div>
       )}
+
+      {step === 3 && (
+        <OptometryPanel
+          form={recordForm}
+          ageYears={ageYears}
+          onFieldChange={updateNumberField}
+          onBooleanChange={(field, value) => updateRecordField(field, value)}
+          onNsucoChange={(field, value) =>
+            updateRecordField(
+              field === 'pursuit' ? 'nsucoPursuit' : 'nsucoSaccade',
+              value,
+            )
+          }
+        />
+      )}
+
+      {step === 4 && (
+        <ScaleAssessmentPanel
+          form={recordForm}
+          scaleResult={scaleResult}
+          beeryItemNumber={beeryItemNumber}
+          beeryCompleted={beeryCompleted}
+          onFieldChange={updateNumberField}
+          onBeeryItemNumberChange={setBeeryItemNumber}
+          onScore={(score) => void submitScore(score)}
+          onResetScale={() => void resetScale()}
+          onConfirmRawScore={confirmRawScore}
+          scoreSubmitting={submittingScore}
+        />
+      )}
+
+      {step === 5 && (
+        <RecordSummary
+          studentName={student?.name ?? '未选择学生'}
+          evalPhase={evalPhase}
+          form={recordForm}
+          saving={saving}
+          canSave={canSave}
+          blockedReason={blockedReason}
+          savedRecord={savedRecord}
+          recordMeta={recordMeta}
+          report={report}
+          records={records}
+          onSave={() => void saveRecord()}
+          onGenerateReport={(recordId) => void generateReport(recordId)}
+          onResetAssessment={resetAssessment}
+        />
+      )}
+
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-3 shadow-sm">
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={step === 1}
+          onClick={() => setStep(prevStep)}
+        >
+          上一步
+        </button>
+        <span className="text-[11px] text-slate-500">{gateMessage}</span>
+        {nextStep !== null && (
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={nextDisabled}
+            onClick={() => setStep(nextStep)}
+          >
+            下一步：{STEP_DEFS[nextStep - 1].title}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -308,3 +308,16 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 包体核验：包名 `com.vmitis.pad`、versionName `1.0`、minSdk 22 / targetSdk 34；`apksigner verify` 通过；bundle 含 `redZoneCodes`（最新前端）。
 - `adb install -r` 成功；启动进入教师工作台，数据为在训 5 / 待晋级 2 / 全员 6；切学生 Pad 显示周子墨、数字额度 900s、评估出示按钮与四款游戏。截图 `/tmp/vmi-pad-screen.png`、`/tmp/vmi-pad-student.png`（本机临时，未入库）。
 - 未验证：LAN 部署构建（需 Windows API 运行 + 3000 入站放行）。当前安装的是 localhost 测试构建，依赖 `adb reverse`。
+
+## 2026-10-20 评估中心 5 步向导与数据链修复
+
+- ✅ `AssessmentPage` 从四个功能 Tab 改为 5 步向导：① 选学生与评估阶段 → ② 初筛与红区门禁 → ③ 视光与眼动（可跳过）→ ④ 量表施测 → ⑤ 汇总、保存与报告；旧 `scale / triage / cards / records` 四个 Tab 移除。
+- ✅ 阶段 `evalPhase` 进入页面状态并透传 `submitScaleScore` / `createRecord`；切换阶段清空草稿并重建 `sessionId`，R2 会话键仍为 `studentId:evalPhase:sessionId`（后端未改）。
+- ✅ 门禁只做 UI：`PENDING_SCREENING` 禁用步骤 ③–⑤；`RED_ZONE_LOCKED` / `REFERRAL_UPLOADED` 禁用步骤 ③–④、保留步骤 ⑤ 保存初筛级 L0；`GREEN_ACTIVE` 放行；初筛提交、回执上传/审核后刷新学生状态。`createRecord` 未加红区 403。
+- ✅ 新增 `components/assessment/`：`AssessmentStepper`、`StudentPhaseSelector`、`OptometryPanel`、`ScaleAssessmentPanel`、`RecordSummary`（同时持有记录草稿字段形状 `AssessmentRecordForm` / `EMPTY_RECORD_FORM` / `hasAnyMeasurement`）。
+- ✅ `BeeryVmiCard` 增加可选受控 props `itemNumber` / `onItemNumberChange` / `onScore` / `scoreDisabled`：教师向导内逐题判 1/0；不传时保持原出示行为，学生 Pad 的 `AssessmentCardPanel` 不受影响。
+- ✅ 「确认原始分」把 `scaleResult.totalRawScore` 写入 `recordForm.beeryVmiRaw`，保存后由 `AssessmentGradingService` 调用种子函数换算；TVPS-4 明示“仅样例题卡 + 手工 7 项原始分”，不伪造题库；DEM 刺激矩阵与手工原始用时保留。
+- ✅ 保存后自动定级并自动生成 HTML 报告（`reportFileUrl`），报告失败不阻塞保存；第 5 步下方按 `BASELINE / STAGE_8W / TRANSITION` 分组显示历史评估并支持逐条重新生成报告。
+- ✅ `scripts/verify-task3.mjs` 新增 8 项断言：R2 阶段隔离、STAGE_8W 连续 3 题 0 分中止、STAGE_8W reset 不影响 BASELINE、Beery 逐题累计原始分 12、STAGE_8W 记录落盘 `evalPhase` + 确认后的 `beeryVmiRaw`/标准分、TVPS/DEM 原始输入与换算、BASELINE 13 + STAGE_8W 1 的分组、`evalPhase` 过滤、STAGE_8W HTML 报告可访问；原有用例保持通过。
+- 验证：`npm run build`（shared-types + api + web，含 web `tsc --noEmit`）通过；Node `v20.20.2` 下 `npm run verify:all` 使用 3100 隔离 SQLite 实跑，Task 2/3/4/6 全绿（Task 3 共 46 项检查通过）。
+- 未验证：浏览器 UI 冒烟（选学生→阶段→初筛→视光→Beery→保存→报告、红区禁用步骤 3–4、TVPS 文案）由主代理补做；本轮未 commit/push。
