@@ -175,6 +175,8 @@ vmi-tis-platform/
 
 > **实现落点（2026-10-19）**：三端合一是 `apps/web` 的路由级终端（`/web`、`/student`、`/parent`）；家长端当前为响应式 H5，未使用 Taro 小程序；眼动仪硬件桥接（`services/eyetracker-bridge`）与多角色 RBAC 登录尚未实现，单机版用 `x-user-*` 请求头标识操作者。API 直接托管 `apps/web/dist`，浏览器打开 `http://localhost:3000` 即可使用。
 
+> **三端入口口径（构建期终端开关）**：同一份 `apps/web` 代码由构建期变量 `VITE_TERMINAL` 决定编译成哪一端。`all`（缺省）是三端切换齐全的演示包；`student` 学生专用包默认进入 `/student`、隐藏顶部三端切换、保留“当前学生”选择器；`teacher` 默认 `/web/home`；`parent` 默认 `/parent`。空值与非法值一律按 `all`。非 `all` 模式的路由守卫只放行本终端前缀，根路径、未知路径与越权直链（学生包访问 `/web/students`、`/parent`、`/foo` 等）统一重定向回该终端首页；`teacher` / `parent` 只按需构建，暂不单独交付。三种构建共用 `capacitor.config.ts` 里的 `appId` `com.vmitis.pad` 与 `appName` `星眸智康 Pad`，学生专用包的最终拆分留后续批次。
+
 ### 2. Android 平板适配与硬件外设桥接规范（Android & Hardware Adaptation）
 
 在开发 `apps/web` 时，按以下跨端规范实现；当前已落地 `capacitor.config.ts`（`appId` / `appName` / `webDir` / `androidScheme`）与 `android/` 工程，Kiosk 全屏、局域网扫码配网、IndexedDB 离线队列与眼动仪硬件桥接为后续增强项。
@@ -309,6 +311,39 @@ vmi-tis-platform/
         "smoothPursuitGain": 0.89
       }
       ```
+   - 教师端跨窗口选学生同步（`SWITCH_STUDENT`，教师 `/web` → 学生 `/student` 窗口或平板）：
+
+      ```
+      {
+        "event": "SWITCH_STUDENT",
+        "studentId": "stu1"
+      }
+      ```
+
+   - 角色与回执：只接受教师端发送，成功 ack `{ "ok": true }`；学生端发送返回 `{ "ok": false, "error": "forbidden" }`；空 `studentId` 返回 `{ "ok": false, "error": "invalid_payload" }`。
+   - 房间：服务端广播到 `role:student`，不按目标 `student:<id>` 发送——学生连接时按当时的学生加入 `student:<id>`，切到新学生后才换房，按目标房间发会收不到。`student:<id>` 继续只服务 `SWITCH_PAD_TASK` 与训练事件；教师 socket 只进 `role:therapist`。
+   - 学生端收到后把当前学生切到 `studentId` 并重载课次、红区状态与 R4 数字额度；学生端自身的选择器只改本窗口当前学生、不回推教师；最后一次选择生效。未知学生 id 由学生端请求 404 提示，不阻断其他窗口。
+
+   - 评估双屏出示（`ASSESSMENT_CARD_CHANGE`，教师 `/web/assessment` 第 4 步 → 学生 `/student` 窗口或平板）：
+
+      ```
+      {
+        "event": "ASSESSMENT_CARD_CHANGE",
+        "studentId": "stu1",
+        "action": "show",
+        "cardType": "tvps4",
+        "tvpsSubtestCode": "MEM",
+        "tvpsItemIndex": 0,
+        "tvpsPhase": "target",
+        "tvpsRemaining": 5
+      }
+      ```
+
+   - 三种卡：`beery`（`beeryItemNumber` 题号 1–30）、`tvps4`（`tvpsSubtestCode` / `tvpsItemIndex` / `tvpsPhase` = `target`|`options` / `tvpsRemaining` 秒）、`dem`（`demTest` = `A`|`B`|`C`）；收回发 `{ "action": "hide", "cardType": null }`。只传索引与阶段，学生端按种子常量自行渲染，不传题目内容。
+   - 角色与回执：只接受教师端发送，成功 ack `{ "ok": true }`；学生端发送返回 `{ "ok": false, "error": "forbidden" }`；空 `studentId` 或 `show` 带非法 `cardType` 返回 `{ "ok": false, "error": "invalid_payload" }`。
+   - 房间：与 `SWITCH_STUDENT` 一致广播 `role:student`；学生端按 `studentId` 过滤，未知 id 不查存在性（广播照发，无人显示）。
+   - 教师端：第 4 步每张卡一个「远程出示」，出示后切题 / 翻子测验 / 换矩阵 / TVPS 每秒倒计时自动重发；「收回评估卡」发 `hide`；离开第 4 步自动收回。TVPS 记忆呈现由教师端计时，到 0 推进到 `options` 再发。
+   - 学生端：收到 `show` 设卡并进入评估画面（训练计时与数字额度同步暂停），收到 `hide` 清卡回训练；只读渲染（隐藏题号 / 子测验 / 矩阵切换），不自行改阶段、不自动计分。本机「评估出示」仍可用，与远程卡最后一次写入生效；收到 `SWITCH_STUDENT` 或 `SWITCH_PAD_TASK` 时清卡回训练。
 2. **本地非接触式眼动仪数据流（`/ws/eyetracker-stream`，60Hz）**：
    - 数据帧结构：`{ "timestamp": 1760515200120, "gazeX": 512.4, "gazeY": 384.1, "leftPupilMm": 4.1, "rightPupilMm": 4.1, "headMovementFlag": false, "validity": 1 }`。
 

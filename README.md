@@ -108,6 +108,69 @@ npm run verify:all
 Windows 单机版：双击 `deploy/start_standalone.bat`。脚本会检查端口、安装依赖、
 建库、导入演示数据、启动 API，并在健康检查通过后打开浏览器。
 
+## 构建期终端模式（`VITE_TERMINAL`）
+
+同一份 `apps/web` 代码用构建期变量 `VITE_TERMINAL` 决定打包成哪一端；缺省 `all` 就是三端切换齐全的演示包。
+
+| 值 | 首页 | 放行路由 | 三端切换 | 学生选择器 |
+|---|---|---|---|---|
+| `all`（缺省） | `/web/home` | 全部 | 显示 | 显示 |
+| `student` | `/student` | 仅 `/student` | 隐藏 | 显示 |
+| `teacher` | `/web/home` | 仅 `/web/*` | 隐藏 | 显示 |
+| `parent` | `/parent` | 仅 `/parent` | 隐藏 | 显示 |
+
+空值与非法值按 `all` 处理。非 `all` 模式下，根路径、未知路径与越权直链统一重定向回该终端首页；`teacher` / `parent` 暂只按需构建，不单独交付。
+
+Bash（Linux / WSL / Git Bash）：
+
+```bash
+VITE_TERMINAL=student \
+VITE_API_BASE=http://192.168.0.188:3000 \
+VITE_SOCKET_URL=http://192.168.0.188:3000 \
+VITE_SOCKET_TOKEN=vmi-tis-dev-token \
+npm run build -w @vmi-tis/web
+```
+
+PowerShell（Windows）：
+
+```powershell
+$env:VITE_TERMINAL = 'student'
+$env:VITE_API_BASE = 'http://192.168.0.188:3000'
+$env:VITE_SOCKET_URL = 'http://192.168.0.188:3000'
+$env:VITE_SOCKET_TOKEN = 'vmi-tis-dev-token'
+npm run build -w @vmi-tis/web
+```
+
+学生包 APK：
+
+```bash
+cd apps/web && npx cap sync android
+cd android && ./gradlew assembleDebug
+# 产物 apps/web/android/app/build/outputs/apk/debug/app-debug.apk（包名 com.vmitis.pad）
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+`VITE_SOCKET_TOKEN` 必须与 `apps/api/.env` 的 `SOCKET_TOKEN` 一致（开发默认 `vmi-tis-dev-token`）；用 HTTP 访问局域网 API 时，服务器 IP 需在 `apps/web/android/app/src/main/res/xml/network_security_config.xml` 中放行。`adb install -r` 保留应用数据，仅签名冲突时才需要先卸载。
+
+## 跨窗口选学生同步（`SWITCH_STUDENT`）
+
+教师在 `/web/*` 顶栏切换「当前学生」时，学生端（同机的 `/student` 窗口，或同一局域网的 student 包平板）通过 Socket.io `SWITCH_STUDENT` 跟随到同一名学生。学生端自己的选择器仍可改本窗口当前学生，但只改本地、不反向推动教师端；最后一次选择生效。
+
+- 服务端只接受教师 socket（`role: 'therapist'`）发送；学生端发送返回 `forbidden`，空 `studentId` 返回 `invalid_payload`。
+- 事件广播到 `role:student` 房间，而不是目标 `student:<id>`：学生 socket 连接时按当时的学生加入 `student:<id>`，切学生后才换房，按目标房间发会收不到。
+- 学生端收到后清空旧课次/锁定/游戏状态并重载新学生；未知学生 id 只在该学生端弹 404 提示，不影响其他窗口。
+- 平板跟随的前提是两边 `VITE_SOCKET_TOKEN` 与 `apps/api/.env` 的 `SOCKET_TOKEN` 一致，且平板能访问服务器 IP:3000。
+
+## 评估双屏（`ASSESSMENT_CARD_CHANGE`）
+
+教师在 `/web/assessment` 第 4 步点某张卡的「远程出示」，学生 Pad（同机 `/student` 窗口或 student 包平板）显示同一张评估卡；教师切题、翻 TVPS 子测验、换 DEM 矩阵、TVPS 5 秒倒计时都会自动跟随。点「收回评估卡」学生端回到训练；离开第 4 步也会自动收回。
+
+- 与 `SWITCH_STUDENT` 共用一条教师 socket；服务端同样只认教师（学生端发返回 `forbidden`，空 `studentId` 返回 `invalid_payload`），广播 `role:student`，学生端按 `studentId` 过滤——发给其他学生的卡不会打扰本机。
+- 只传索引：Beery 题号、TVPS 子测验/样例题/阶段/剩余秒、DEM 测试项；学生端读种子常量渲染，不传题目内容、不自动计分。
+- 学生端只读：隐藏题号、子测验与矩阵切换；学生自己的「评估出示」仍可用，最后一次写入生效（教师再次出示会覆盖本机画面）。
+- 评估卡出示期间训练计时与数字额度同步暂停（沿用 `mode='assessment'` 门禁），不记录 Trial；训练中出示即暂停，收回后恢复。
+- 前提同样是两边 `VITE_SOCKET_TOKEN` 与 `apps/api/.env` 的 `SOCKET_TOKEN` 一致，且平板能访问服务器 IP:3000。
+
 ## 数据库路径说明
 
 环境变量文件位于 `apps/api/.env`（模板见 `apps/api/.env.example`）。

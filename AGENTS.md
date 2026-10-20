@@ -15,8 +15,10 @@
 - **后端**：Node.js 20 LTS + NestJS 10 + Prisma 5 + Socket.io；REST 统一前缀 `/api`；API 直接托管 `apps/web/dist`、报告与上传文件。
 - **数据库**：SQLite 3（单机默认）↔ PostgreSQL 15（医院/服务器，Docker）；唯一 Schema `prisma/schema.prisma`；只改 `provider` 与 `DATABASE_URL`；PostgreSQL 副本由 `scripts/prepare-schema.mjs` 构建期生成，不入库。
 - **前端**：React 18 + Vite 5 + TypeScript + Tailwind CSS 3 + Zustand + React Router + Chart.js 4 + socket.io-client；三端是同一 `apps/web` 的路由级终端。
+- **构建期终端模式**：`VITE_TERMINAL` 决定 `apps/web` 构建成哪一端——`all`（缺省，三端切换齐全的演示包）/ `student`（学生专用包：首页 `/student`、隐藏三端切换、保留学生选择器）/ `teacher`（首页 `/web/home`）/ `parent`（首页 `/parent`）；空值与非法值一律按 `all`。判断只在 `apps/web/src/store/useAppStore.ts` 的 `normalizeTerminal` / `TERMINAL_MODE` 一处，路由守卫与 Header 共用；非 `all` 模式下越权直链重定向回本终端首页。不加 `build:student` 之类 npm 脚本（`VITE_TERMINAL=... npm` 前缀在 Windows cmd 不成立），用法见 `README.md`。
 - **Android**：Capacitor 6；`apps/web/android`（Gradle 8.2.1 / AGP 8.2.1 / compileSdk 34 / minSdk 22），appId `com.vmitis.pad`，appName `星眸智康 Pad`；Vite 静态产物经 `npx cap sync android` 打入 APK。
 - **测试**：`scripts/run-verification.mjs` 统一跑 Task 2/3/4/6；每个任务使用全新隔离 SQLite + 3100 测试 API。
+- **实时通道**：Socket.io 事件契约在 `packages/shared-types/src/index.ts`（`SWITCH_PAD_TASK` / `SWITCH_STUDENT` / `ASSESSMENT_CARD_CHANGE` / `PAD_TRIAL_COMPLETED`）。`TeacherLayout` 只建一条教师 socket，经 store 的发送槽分发：`teacherSwitchStudent` 交给 `StudentSelector`，`teacherEmitAssessmentCard` 交给评估中心第 4 步。服务端只认教师并广播 `role:student`——学生 socket 连接时还在旧学生房间，按目标 `student:<id>` 发会漏；学生 socket 进 `role:student` + `student:<id>`，`student:<id>` 只服务投屏与训练事件。评估题卡只传种子索引（题号 / 子测验 / 阶段 / 剩余秒 / DEM 测试项），学生端按 `studentId` 过滤后只读渲染。
 - **交付**：Windows 单机版 `deploy/start_standalone.bat`（SQLite）；Docker Compose `deploy/docker-compose.yml`（PostgreSQL 15 + API）。
 
 未经用户明确要求，不要引入：
@@ -33,7 +35,7 @@
 2. **R2 连续 0 分中止**：连续 3 题 `score=0` 立即中止量表并保存进度；状态键必须含 `studentId + evalPhase + sessionId`。当前状态存进程内存，单实例有效（已知偏差）。
 3. **R3 晋级**：连续 3 次课 ≥80% + ≥2 种材料 + ≥1 次家庭打卡 → `PROMOTION_READY`；只统计最近一次 `APPROVE_PROMOTION` 审计**之后完成**的课次；审批前重新核验；审批写入 `PROMOTION_READY` 审计。
 4. **R4 护眼硬锁**：数字训练累计 900 秒硬顶；Trial 与数字时长用旧值条件更新，冲突返回 409；教师重置必须提供服务端授权码（`DIGITAL_RESET_CODE`，开发缺省 `0808`）；学生端 20 秒远眺只关闭遮罩，不重置本课额度。
-5. **安全与审计**：审计快照只保留标识/状态/字段名，不带敏感原文；WebSocket 握手校验 token 与角色/学生归属，禁止匿名或跨学生伪造；Excel 导入 5 MB / 500 行；视频上传 100 MB，清理失败不写 `videoDeletedAt`，远程视频不谎报已清理。
+5. **安全与审计**：审计快照只保留标识/状态/字段名，不带敏感原文；WebSocket 握手校验 token 与角色/学生归属，禁止匿名或跨学生伪造；`SWITCH_STUDENT` / `ASSESSMENT_CARD_CHANGE` 只接受教师端发送（学生端发返回 `forbidden`，空 `studentId` 返回 `invalid_payload`）；Excel 导入 5 MB / 500 行；视频上传 100 MB，清理失败不写 `videoDeletedAt`，远程视频不谎报已清理。
 6. **环境边界**：不修改 `/mnt/f/Projects/VMI-TIS`（Windows 工作树）；不从 WSL 杀 Windows 进程；WSL 测试 API 用 3100（3000 归 Windows API）；不在 WSL 直接起 3000；`docker compose up` 前先确认 3000/5432 未被 Windows 占用；不回退 `f1b1c66` 的 R1–R4/审计/WebSocket/视频/Docker 修复。
 7. **数据与密钥**：`.env`、`local.properties`、`apps/api/data/`、`dist/`、`prisma/.generated/`、`node_modules/` 一律不提交；`SOCKET_TOKEN` / `DIGITAL_RESET_CODE` 开发默认值仅限本地演示，生产必须改强随机值；儿童数据不出机构网络。
 

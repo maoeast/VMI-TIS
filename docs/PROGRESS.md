@@ -321,3 +321,39 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - ✅ `scripts/verify-task3.mjs` 新增 8 项断言：R2 阶段隔离、STAGE_8W 连续 3 题 0 分中止、STAGE_8W reset 不影响 BASELINE、Beery 逐题累计原始分 12、STAGE_8W 记录落盘 `evalPhase` + 确认后的 `beeryVmiRaw`/标准分、TVPS/DEM 原始输入与换算、BASELINE 13 + STAGE_8W 1 的分组、`evalPhase` 过滤、STAGE_8W HTML 报告可访问；原有用例保持通过。
 - 验证：`npm run build`（shared-types + api + web，含 web `tsc --noEmit`）通过；Node `v20.20.2` 下 `npm run verify:all` 使用 3100 隔离 SQLite 实跑，Task 2/3/4/6 全绿（Task 3 共 46 项检查通过）。
 - 未验证：浏览器 UI 冒烟（选学生→阶段→初筛→视光→Beery→保存→报告、红区禁用步骤 3–4、TVPS 文案）由主代理补做；本轮未 commit/push。
+
+## 2026-10-20 三端入口分离（构建期终端开关）
+
+- ✅ 新增构建期终端模式 `VITE_TERMINAL`：`all`（缺省）/ `student` / `teacher` / `parent`，空值与非法值统一按 `all`。判断只落在 `apps/web/src/store/useAppStore.ts` 的 `normalizeTerminal` / `TERMINAL_MODE` 一处，Header 与路由守卫共用，不再各处各判一套。
+- ✅ `apps/web/src/App.tsx` 新增 `TerminalGuard`（`useLocation` + 白名单）：`all` 放行全部；`student` 仅 `/student`（含 `/student/` 前缀）；`teacher` 仅 `/web` 与 `/web/*`；`parent` 仅 `/parent` 与 `/parent/*`；越权直链用 `<Navigate replace>` 回本终端首页。现有 `/`、`/web/:page`、`/student`、`/parent`、`*` 路由与 `all` 模式行为不变。
+- ✅ `apps/web/src/components/Header.tsx` 只在 `all` 渲染三端切换按钮组，`StudentSelector` 不动；`useAppStore` 的 `activeTerminal` 初值按模式推导（`student` / `parent` 取本端，`teacher` / `all` / 非法取 `web`）。
+- ✅ 未加 `package.json` 构建脚本：`VITE_TERMINAL=... npm run build` 前缀在 Windows cmd 不成立，README 分别给 bash 与 PowerShell 写法，并写清 `adb install -r` 保留数据。
+- 验收（`vite preview` 服务各模式 dist + 3100 演示库副本的浏览器实测）：`all` `/`→`/web/home`、点「学生 Pad」→`/student`、`/parent` 正常、三端切换与学生选择器都在；`student` `/`→`/student`，`/web/students`、`/parent`、`/foo` 均落 `/student`，Header 零切换按钮、学生选择器在（截图本机临时，未入库）；`teacher` `/`→`/web/home`、`/student`→`/web/home`、无切换；`parent` `/`→`/parent`、`/web`→`/parent`、无切换；`VITE_TERMINAL=foo` 与空值均按 `all`（`/`→`/web/home`、三端切换在）。
+- 验证：`npm run build`（shared-types + api + web，含 web `tsc --noEmit`）EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿；`VITE_TERMINAL=student`（LAN `192.168.0.188:3000`）构建 + `npx cap sync android` + `./gradlew assembleDebug` 成功，APK 4.0 MB，包名 `com.vmitis.pad`、应用名 `星眸智康 Pad`、`apksigner verify` 通过、assets 内为 student 版 bundle。
+- 未验证：Node 验收基线 `v20.20.2`（本机 WSL 当前只有 Node 24.22.0，本轮构建与验收均在该版本完成）；APK 平板真机安装/运行由主代理复核（`adb install -r`，不卸载）；`teacher` / `parent` 只做了构建与浏览器验证，不交付。
+- 未 commit/push。
+
+## 2026-10-20 跨窗口选学生同步（`SWITCH_STUDENT`）
+
+- ✅ 契约：`packages/shared-types/src/index.ts` 新增 `SwitchStudentPayload`（`event:'SWITCH_STUDENT'`、`studentId:string`）。
+- ✅ 服务端：`SessionGateway` 新增 `SWITCH_STUDENT` 处理器——只接受 `role==='therapist'`（学生端发送返回 `forbidden`），空或非字符串 `studentId` 返回 `invalid_payload`，成功返回 `{ ok: true }` 并把事件广播到 `role:student`。不按目标 `student:<id>` 发：学生 socket 连接时按当时的学生入房，切到新学生后才换房，按目标房间会收不到；`student:<id>` 继续只服务 `SWITCH_PAD_TASK` 与训练事件。
+- ✅ 前端：`useWebSocket` 增 `onSwitchStudent` 与 `emitSwitchStudent`（`useCallback` 包内部 `socketRef`，句柄稳定）；`TeacherLayout` 建一条教师 socket（`role:'therapist'`）并把发送函数写入 store 的 `teacherSwitchStudent` 槽（卸载置 null）；`StudentSelector` 先本地 `setActiveStudent`，仅在 `pathname` 以 `/web` 开头且 id 非空时调用发送槽（槽为 null 静默跳过；自动选首名学生不广播）；`StudentPadPage` 的 `onSwitchStudent` 写回 `setActiveStudent`，沿用原有 effect 清空锁定/课次/游戏/计时并重载新学生的红区与 R4 额度。
+- ✅ `scripts/verify-task6.mjs` 新增 6 项断言：教师 ack `ok`、学生收到、旧学生房间仍收到对其他学生的切换（证明 `role:student` 广播）、学生端发送 `forbidden`、学生端发送未被广播、空 `studentId` 为 `invalid_payload`；原有匿名断开与跨学生 `PAD_TRIAL_COMPLETED` 拒绝保留。
+- 验证（两窗口浏览器，3100 隔离库 + API 托管 `all` dist，headless Chrome 双标签 + CDP，9/9 通过）：教师选陈果果、周子墨学生端跟随；学生自己改选林小宇只影响本窗口（教师仍周子墨）；教师再选刘诺一最后一次赢；未知 UUID → 学生端 toast「学生不存在」；张梓轩 → 红区锁定页；训练中切人计时从 3 秒清零、新学生重载。student 包 `/student` 截图确认选择器保留、无三端切换。
+- 验证：Node `v20.20.2` 下 `npm run build` EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿；`VITE_TERMINAL=student` + LAN env 构建、`npx cap sync android`、`./gradlew assembleDebug` 成功（APK 4.0 MB，`com.vmitis.pad`，minSdk 22 / targetSdk 34，`apksigner verify` 通过，bundle 含 `SWITCH_STUDENT` 与 `192.168.0.188`）。
+- 未验证：平板真机安装/运行与学生包跟随（交主代理）；断线重连后再选的平板实测。
+- 未 commit/push。
+
+## 2026-10-20 评估双屏（`ASSESSMENT_CARD_CHANGE`）
+
+- ✅ 契约：`packages/shared-types/src/index.ts` 新增 `AssessmentCardType` 与 `AssessmentCardChangePayload`（`event:'ASSESSMENT_CARD_CHANGE'`、`studentId`、`action:'show'|'hide'`、`cardType:'beery'|'tvps4'|'dem'|null`，可选 `beeryItemNumber` / `tvpsSubtestCode` / `tvpsItemIndex` / `tvpsPhase` / `tvpsRemaining` / `demTest`）。
+- ✅ 服务端：`SessionGateway` 新增 `ASSESSMENT_CARD_CHANGE` 处理器——只接受 `role==='therapist'`（学生端返回 `forbidden`），空 `studentId`、非法 `action`、`show` 带非法 `cardType` 返回 `invalid_payload`，成功广播 `role:student`；未知 `studentId` 不查存在性，由学生端按 `studentId` 过滤。
+- ✅ 发送通道：`useWebSocket` 增 `onAssessmentCardChange` 与句柄稳定的 `emitAssessmentCardChange`；`TeacherLayout` 把后者写入 store 的 `teacherEmitAssessmentCard` 槽（卸载置 null），与 `teacherSwitchStudent` 共用同一条教师 socket。
+- ✅ 教师端：`ScaleAssessmentPanel` 新增「双屏评估出示」栏与每张卡一个「远程出示」/「已出示 · 重发」；面板持有 TVPS 子测验/样例题/阶段/剩余秒与 DEM 测试项，出示后切题、翻子测验、换矩阵、每秒倒计时自动重发；「收回评估卡」发 `hide`；离开第 4 步（组件卸载）自动收回；出示状态是面板本地 state（不进 store），切学生自动作废。
+- ✅ 组件受控化（props 全部可选，不传时保持原内部状态）：`Tvps4Card` 增 `subtestCode` / `itemIndex` / `phase` / `remaining` 受控与对应 `on*Change`、`readOnly`（隐藏子测验选择与翻题）；`DemMatrix` 增 `test` / `onTestChange` / `readOnly`；`BeeryVmiCard` 增 `readOnly`（隐藏题号选择器与教师提示）。学生端本地「评估出示」行为不变。
+- ✅ 学生端：`StudentPadPage` 增 `assessmentCard` state 与 `onAssessmentCardChange`——`studentId` 不匹配忽略，`show` 设卡并进入 `mode='assessment'`，`hide` 清卡回训练；`SWITCH_STUDENT` / `SWITCH_PAD_TASK` / 切学生时清卡回训练。远程卡只读渲染（Beery 受控题号不传 onScore；TVPS 四项受控、`revealAnswer=false`、不自行改阶段；DEM 受控测试项），只传索引、读种子渲染。本机「评估出示」仍在，与远程卡 last-write-wins（「改用本机出示」清远程卡）。训练计时与数字额度沿用 `mode !== 'training'` 门禁自动暂停，不写 digital-start/addDigital。
+- ✅ `scripts/verify-task6.mjs` 新增 9 项断言：教师 Beery / TVPS-4（含子测验/阶段/剩余秒）/ DEM show 学生收到、收回 hide、学生端发 `forbidden` 且未广播、空 `studentId` 为 `invalid_payload`、未知 `studentId` 照发到 `role:student`（学生端过滤）。
+- 验证：`npm run build`（shared-types + api + web，含 web `tsc --noEmit`）EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿（Task 6 含新增 9 项）；两窗口浏览器（3100 演示库 + `all` / `student` 两个真实构建 + headless Chrome 双标签 CDP，30/30 通过）：教师第 4 步出示 Beery 学生端只读显示、切第 9 题跟随、TVPS 切 MEM 5 秒倒计时后自动切选项、DEM 换 Test C、训练计时出示暂停收回恢复、学生本机面板与远程卡 last-write-wins、离开第 4 步自动收回、切学生清卡、发给其他学生的卡不影响本机。
+- 验证：`VITE_TERMINAL=student` + LAN env（`192.168.0.188:3000`）构建、`npx cap sync android`、`./gradlew assembleDebug` 成功（APK 4,173,454 B，`com.vmitis.pad`，minSdk 22 / targetSdk 34，`apksigner verify` 通过，bundle 含 `ASSESSMENT_CARD_CHANGE` 与 `192.168.0.188`）。
+- 未验证：平板真机安装/运行与跟随（交主代理）；本机 Linux 下 Node 为 v24.22.0（项目基线 v20.20.2）。
+- 未 commit/push。
