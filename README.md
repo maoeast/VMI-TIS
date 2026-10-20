@@ -2,6 +2,14 @@
 
 NestJS 10 + Prisma 5 + SQLite/PostgreSQL 双模后端，配套 React 三端（后续任务）与 Windows 单机版启动脚本。
 
+## 文档入口
+
+- `AGENTS.md` —— 项目代理指令、红线、技术栈冻结与质量门禁（新会话必读）
+- `docs/会话启动.md` / `docs/会话结束.md` —— 会话恢复与收尾流程
+- `.continue-here.md` —— 当前跨会话状态快照
+- `docs/index.md` —— 全量文档地图与权威源
+- `docs/vmi_tis.md` —— 产品需求与详细设计（SRS）
+
 ## 目录结构
 
 ```

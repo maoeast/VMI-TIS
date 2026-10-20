@@ -225,7 +225,22 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 
 ### 剩余偏差 / 未验证
 
-- ⏳ Android 真机/模拟器验收与 APK 编译仍未执行；`network_security_config.xml` 需按实际局域网服务器 IP 添加例外。
+- ⏳ Android 真机/模拟器安装与运行未验证（APK 已在 WSL2 编译，见「2026-10-20 WSL2 Android APK 构建」）；构建时 API 指向 `http://192.168.0.188:3000`，`network_security_config.xml` 已加入该 IP。
 - ⏳ Kiosk 退出码锁（`startKiosk` / `stopKiosk` 插件）未实现，当前仅沉浸式全屏。
 - ⏳ 原有偏差仍在：无 RBAC、HTML 报告非 PDF、R2 进程内状态单实例、眼动仪 60Hz 桥接未接入、便携 Node 未打包。
 
+## 2026-10-20 WSL2 Android APK 构建
+
+- ✅ Android SDK 复用 WSL2 已安装的 `~/android-sdk`（cmdline-tools 12.0、platforms;android-34、build-tools;34.0.0、platform-tools，license 已接受），未重复下载 SDK。
+- ✅ `apps/web/android/local.properties` 指向 `sdk.dir=/home/maoea/android-sdk`；该文件已被 `apps/web/android/.gitignore` 忽略，未入库。
+- ✅ Web 构建注入 `VITE_API_BASE=http://192.168.0.188:3000`、`VITE_SOCKET_URL=http://192.168.0.188:3000`、`VITE_SOCKET_TOKEN=vmi-tis-dev-token`，随后 `npx cap sync android`。
+- ✅ `./gradlew assembleDebug --no-daemon` 成功（Gradle 8.2.1 / AGP 8.2.1 / JDK 17）；产物 `apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（3.8 MB，包名 `com.vmitis.pad`，`assets/public/index.html` 与 `res/xml/network_security_config.xml` 已打包）。
+- ⏳ 真机/模拟器安装与运行未验证：`adb devices` 无设备，WSL 未安装 emulator；Windows 局域网 API `192.168.0.188:3000` 从 WSL 访问超时（Windows 本机 `Invoke-WebRequest` 正常），Pad 侧可达性需在设备上确认。
+
+## 2026-10-20 会话任务交接体系
+
+- ✅ 新增 `AGENTS.md`：项目定位、技术栈冻结、R1–R4 与安全/环境红线、Context Tiers、代码布局、编码规则、工作方式、质量门禁。
+- ✅ 新增 `.continue-here.md`：六段现场快照（Current State / Next Action / Blockers / Dead Ends / Key Decisions / Relevant Files）。
+- ✅ 新增 `docs/会话启动.md` / `docs/会话结束.md`：HANDOFF 区块、启动固定摘要、收尾覆写与 Git 处理表。
+- ✅ 新增 `docs/index.md`：文档地图与权威源；`README.md` 增加「文档入口」。
+- 规则：`.continue-here.md` 是当前现场唯一快照；`docs/PROGRESS.md` 只追加历史；两者矛盾以 `.continue-here.md` 为准。
