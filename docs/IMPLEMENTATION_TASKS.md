@@ -318,103 +318,39 @@ async importExcel(
 apps/api/src/assessments/
 ├── assessment-record.controller.ts
 ├── assessment-record.service.ts
-├── auto-level.service.ts              # 自动分级算法核心
+├── assessment-grading.service.ts      # 输入映射 + 调用种子 5 个纯函数
+├── report.service.ts                  # HTML 报告（含 assessmentMetaJson 段落）
 └── dto/
     ├── submit-scale-score.dto.ts
+    ├── create-assessment-record.dto.ts
     └── assessment-record-query.dto.ts
 ```
 
 ### 关键逻辑实现
 
 #### 3.1 连续 3 题 0 分自动中止（规则 R2）
-参考原型 L2164-2178（评估量表判分逻辑）：
+参考原型 L2164-2178（评估量表判分逻辑）；当前实现（`AssessmentRecordService.submitScaleScore`）：
 ```typescript
-// apps/api/src/assessments/assessment-record.service.ts
-export class AssessmentRecordService {
-  private recentScores: Map<string, number[]> = new Map(); // sessionId → [scores]
-  
-  async submitScaleScore(
-    sessionId: string,
-    dto: SubmitScaleScoreDto,
-  ): Promise<{ shouldTerminate: boolean; message?: string }> {
-    if (!this.recentScores.has(sessionId)) {
-      this.recentScores.set(sessionId, []);
-    }
-    
-    const scores = this.recentScores.get(sessionId);
-    scores.push(dto.score);
-    
-    // 检查最近 3 题是否全为 0
-    if (scores.length >= 3) {
-      const lastThree = scores.slice(-3);
-      if (lastThree.every(s => s === 0)) {
-        // 自动中止测验
-        await this.saveAssessmentRecord(sessionId, scores);
-        this.recentScores.delete(sessionId);
-        
-        return {
-          shouldTerminate: true,
-          message: '检测到连续 3 题得分为 0，根据测验规则已自动中止本次评估',
-        };
-      }
-    }
-    
-    return { shouldTerminate: false };
-  }
-}
+const scores = this.recentScores.get(sessionKey) ?? [];
+if (dto.score !== undefined) scores.push(dto.score);
+this.recentScores.set(sessionKey, scores);
+
+// 唯一公式源：种子文件的连续 3 题 0 分中止函数
+const ceiling = evaluateCeilingRule(scores as Array<0 | 1 | null>);
+if (ceiling.shouldTerminate) this.terminatedSessions.add(sessionKey);
 ```
 
+响应保留 `lastThree` / `message`，并返回 `consecutiveZeroCount` / `ceilingItemIndex` / `totalRawScore`；状态键含 `studentId + evalPhase + sessionId`，`reset` 清空该键。中止后保留累计 `scores` 与 `totalRawScore`，会话标记为已中止并拒绝继续提交，直到 `reset`。
+
 #### 3.2 L0-L5 综合定级算法
-参考需求文档 L200-208（定级规则）：
-```typescript
-// apps/api/src/assessments/auto-level.service.ts
-export class AutoLevelService {
-  calculateLevel(input: AutoLevelInput): CapabilityLevel {
-    // 优先级 1：身体稳定不达标 → 强制 L0
-    if (!input.stabilityPass) {
-      return CapabilityLevel.L0;
-    }
-    
-    // 优先级 2：视觉效率问题 → L1
-    if (
-      (input.npcCm && input.npcCm > 10) ||
-      (input.accomFacilityCpm && input.accomFacilityCpm < 6) ||
-      (input.nsucoScore?.pursuit <= 2) ||
-      (input.nsucoScore?.saccade <= 2)
-    ) {
-      return CapabilityLevel.L1;
-    }
-    
-    // 优先级 3：视觉感知薄弱 → L2
-    const perceptionWeak =
-      (input.tvps4Std && input.tvps4Std < 80) ||
-      (input.mvpt3Std && input.mvpt3Std < 80);
-    const motorCoordOk = input.beeryVmiStd && input.beeryVmiStd >= 80;
-    
-    if (perceptionWeak && motorCoordOk) {
-      return CapabilityLevel.L2;
-    }
-    
-    // 优先级 4：视觉运动整合薄弱 → L3
-    if (input.beeryVmiStd && input.beeryVmiStd < 80) {
-      return CapabilityLevel.L3;
-    }
-    
-    // 优先级 5：基础达标但课堂应用不足 → L4
-    if (
-      input.beeryVmiStd >= 80 &&
-      input.tvps4Std >= 80 &&
-      // 这里假设有课堂抄写/文具使用补充评估
-      !input.classroomAdaptationPass
-    ) {
-      return CapabilityLevel.L4;
-    }
-    
-    // 全部达标 → L5
-    return CapabilityLevel.L5;
-  }
-}
-```
+
+唯一公式源是种子文件的 `determineRecommendedLevelL0ToL5`。`AssessmentGradingService` 负责：
+- 按学生出生日期计算精确月龄/年龄；
+- 原始分优先调用 `calculateBeeryVmiNorms` / `calculateTvps4ProfileNorms` / `evaluateDemTestResult`；
+- 映射 `stabilityPass` / `quadrupedHoldSec` / `classroomCopyAccuracyPct` / NSUCO 最低分 / 红区布尔；
+- 调用定级函数，把原始输入、换算结果与定级分析写入 `assessmentMetaJson`，`autoLevel` 回写 `student.currentLevel`。
+
+红区返回的 `triageStatus` 只写 meta，不回写学生 `triageStatus`（R1 只归 `TriageService`）。
 
 ### 验收标准（供 ChatGPT 审查）
 - [ ] 提交评估时连续 3 题 0 分，接口返回 `shouldTerminate: true` 并保存当前进度

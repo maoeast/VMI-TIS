@@ -9,8 +9,9 @@
 | 你是谁 / 想干什么 | 读这个 |
 |---|---|
 | **新会话 / 第一次接手** | [`../AGENTS.md`](../AGENTS.md)（红线与冻结项）→ [`../.continue-here.md`](../.continue-here.md)（完整现场）→ [`会话启动.md`](会话启动.md)（恢复流程） |
+| **想快速理解项目 / 给新同事介绍** | [`../README.md`](../README.md)（项目入口）→ [`项目速览-费曼版.md`](项目速览-费曼版.md)（10 分钟费曼版；非规范阅读导览） |
 | **要改某个功能** | 先在 [`vmi_tis.md`](vmi_tis.md) 找到拥有该主题的章节，再看 [`IMPLEMENTATION_TASKS.md`](IMPLEMENTATION_TASKS.md) 对应 Task，最后查 [`PROGRESS.md`](PROGRESS.md) 的已知偏差 |
-| **要开发/修改评估模块** | 先读 [`../AGENTS.md`](../AGENTS.md) 的「评估模块唯一数据/公式源」规则，再读 `../packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` |
+| **要开发/修改评估模块** | 先读 [`../AGENTS.md`](../AGENTS.md) 的「评估模块唯一数据/公式源」规则；后端入口 `apps/api/src/assessments/assessment-grading.service.ts`，前端组件在 `apps/web/src/components/assessment/`；前端 Vite 从 `@vmi-tis/shared-types/assessment-seed` 子路径读取种子，根入口继续供 API/Node 使用 |
 | **想知道当前进度 / 验证结果** | [`PROGRESS.md`](PROGRESS.md)（历史）＋ [`../.continue-here.md`](../.continue-here.md)（当前） |
 | **查外部评审意见** | [`chatgpt评审.md`](chatgpt评审.md)（29 项；`f1b1c66` 已处理） |
 | **WSL2 环境 / 端口 / Android 构建** | [`../WSL2_HANDOFF.md`](../WSL2_HANDOFF.md) |
@@ -26,7 +27,8 @@
 | 评估题库 / 常模 / 公式 | `../packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` | 评估模块**唯一数据与公式源**：5 个纯函数 + 常量数组；禁止重写公式或编造题目 |
 | 历史进度 | `PROGRESS.md` | 按任务/日期记录已完成、验证、偏差与下一步；**只追加，不回写成当前状态** |
 | 当前现场 | `../.continue-here.md` | 跨会话状态快照；会话结束按 `会话结束.md` 全量覆写 |
-| 会话流程 | `会话启动.md` / `会话结束.md` | AI 助手会话的恢复/收尾流程；HANDOFF 区块是现场摘要 |
+| 会话流程 | `会话启动.md` / `会话结束.md` | AI 助手会话的恢复/收尾流程；HANDOFF 区块是现场摘要；收尾默认输出费曼式报告 + 四行摘要 |
+| 项目速览 / 阅读导览 | [`../README.md`](../README.md)、[`项目速览-费曼版.md`](项目速览-费曼版.md) | **非权威**：面向新人/汇报的 10 分钟概览；规范口径仍以 `vmi_tis.md` / `AGENTS.md` / `PROGRESS.md` / `../.continue-here.md` 为准 |
 | 评审与分析 | `chatgpt评审.md`、`implementation_analysis.md` | 外部评审输入与实现分析；评审结论以代码与 `PROGRESS.md` 验证记录为准 |
 | 历史架构评审 | `architecture_review_corrected.md`、`architecture_review_final_corrected.md` | 历史输入，非当前权威 |
 | WSL2 / 历史交接 | `../WSL2_HANDOFF.md`、`PROJECT_HANDOFF_SUMMARY.md`、`DEEPSEEK_HANDOFF.md`、`QUICK_START_CHECKLIST.md`、`CHATGPT_REVIEW_MANUAL.md` | WSL2 任务书与多模型流水线历史资料；参考，不用来覆盖当前状态 |
@@ -38,11 +40,11 @@
 
 - ✅ Task 1–6 已完成；`f1b1c66` 已处理 29 项 ChatGPT 评审（R1–R4、审计、WebSocket、视频、Docker、Android 配置）。
 - ✅ `npm run verify:all` 在 Node `v20.20.2` 下通过 Task 2 / 3 / 4 / 6（每个任务全新隔离 SQLite + 3100 测试 API）。
-- ✅ WSL2 已编译 debug APK：`apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（3.8 MB，`com.vmitis.pad`），API 指向 `http://192.168.0.188:3000`。
+- ✅ WSL2 已编译 debug APK：`apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（4.0 MB，`com.vmitis.pad`；本轮已含评估 UI），API 指向 `http://192.168.0.188:3000`。
 - ⏳ 无设备/模拟器，APK 未做安装/运行验证；WSL 访问 Windows 局域网 API 超时。
 - ✅ 会话交接体系与 APK 构建配置已提交：`3d943fc` / `fe1b08d`；未 push。
-- ✅ 评估量表种子已接入并提交（`feat(shared-types): add assessment scales seed`）；工作区 clean。
-- ✅ 接入后 `npm run build`（shared-types + api + web）通过；5 个纯函数与四类前端数据在 Node 运行时验证可读。
+- ✅ 评估模块已接入种子 5 纯函数：`AssessmentGradingService` + `assessmentMetaJson` + 前端题卡/初筛/原始分 + 学生 Pad 评估出示模式；`npm run build` 与 `npm run verify:all` 全绿；改动未提交。
+- ⏳ 浏览器渲染冒烟未执行（本环境无 Chromium/Chrome）；APK 已重编译为 4.0 MB 并包含评估 UI，无设备未做安装/运行验证。
 - 已知偏差：Kiosk 插件、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突。
 
 ## 文档维护规范

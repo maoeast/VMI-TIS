@@ -199,13 +199,16 @@ vmi-tis-platform/
 
 #### 规则 R2：电子量表自动中止（Ceiling Rule）与常模分层算法
 
-- **自动中止规则**：在 Beery VMI-6 或 TVPS-4 在线施测过程中，每当评估师提交单题判分 `score = 0` 时，系统检查最近连续 3 道题得分是否均为 `0`。若是，立即弹出提示并自动结束当前测验。
-- **综合定级算法（`L0–L5`）**：
-   - 若身体稳定/前庭本体评估（SIPT/SPSRC 或临床观察）未达标 → 强制优先定级 `L0`（先稳底座）。
-   - 若视光专科检查存在集合不足（`NPC > 10cm`）、调节灵活度滞后（`< 6 cpm`）或 NSUCO 追视/扫视评分 `≤ 2分` → 定级 `L1`（视觉效率）。
-   - 若 TVPS-4 / MVPT-3 视觉感知标准分 `< 80` 且低于运动协调补充测验 → 定级 `L2`（视觉感知）。
-   - 若 Beery VMI-6 标准分 `< 80` 且手部精细/图形临摹薄弱 → 定级 `L3`（视觉运动整合）。
-   - 若基础 VMI 达标但课堂抄写、文具使用或生活自理不稳定 → 定级 `L4`（适应应用）或 `L5`（生活迁移）。
+- **自动中止规则**：在 Beery VMI-6 或 TVPS-4 在线施测过程中，每当评估师提交单题判分 `score = 0` 时，系统检查最近连续 3 道题得分是否均为 `0`。若是，立即弹出提示并自动结束当前测验；中止后保留本轮累计得分与 `totalRawScore`，会话标记为已中止并拒绝继续计分，只有显式 `reset` 才清空。
+- **综合定级算法（`L0–L5`）**：唯一公式源为 `packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` 的 `determineRecommendedLevelL0ToL5`；后端 `AssessmentGradingService` 只做输入映射、调用与落库，不复制公式。
+   - 红区优先：学生 `triageStatus` 为 `RED_ZONE_LOCKED` / `REFERRAL_UPLOADED` 且回执未审核通过 → `L0`；种子返回的 `triageStatus` 只写入 `assessmentMetaJson`，**不回写学生 `triageStatus`**（R1 只归 `TriageService`）。
+   - 身体稳定：`spsrcSensoryStable` 未达标或 `quadrupedHoldSec < 5` → `L0`。
+   - 视觉效率：`NPC > 10cm`、调节灵活度 `< 6 cpm` 或 NSUCO 追视/扫视最低分 `≤ 2` → `L1`。
+   - 视觉感知：TVPS-4 标准分 `< 80`，且 TVPS-4 不高于 Beery VMI/VP/MC 的运动协调表现 → `L2`。
+   - 视觉运动整合：Beery VMI-6 标准分 `< 80` 或运动协调补充测验 `< 80` → `L3`。
+   - 适应应用：Beery VMI-6 标准分 `< 90` 或课堂抄写正确率 `< 85` → `L4`。
+   - 全部达标 → `L5`。
+- **原始分与常模**：`calculateBeeryVmiNorms` / `calculateTvps4ProfileNorms` / `evaluateDemTestResult` 负责换算；原始输入、换算结果、DEM/TVPS 明细与定级分析统一写入 `AssessmentRecord.assessmentMetaJson`。老记录无该字段时，报告与页面按空处理。
 
 #### 规则 R3：连续 3 次 ≥ 80% 晋级与动态降级判定引擎
 
@@ -245,8 +248,8 @@ vmi-tis-platform/
 | `POST /api/assessments/referral-upload` | 上传眼科回执 | 状态 → `REFERRAL_UPLOADED` |
 | `POST /api/assessments/referral-audit` | 审核回执 | `APPROVED` → `GREEN_ACTIVE`；`REJECTED` → `RED_ZONE_LOCKED` |
 | `GET /api/assessments/referrals/:studentId` | 转介列表 | 按学生返回转介单与审核状态 |
-| `POST /api/assessments/scale-score` | 逐题判分 | R2：连续 3 题 0 分返回 `shouldTerminate=true`；`reset` 重置会话 |
-| `POST /api/assessments/records` | 保存评估记录 | 写入六类指标、NSUCO、六维雷达；L0–L5 自动定级并回写学生层级 |
+| `POST /api/assessments/scale-score` | 逐题判分 | R2：连续 3 题 0 分返回 `shouldTerminate=true`，并返回 `consecutiveZeroCount` / `ceilingItemIndex` / `totalRawScore`；`reset` 重置会话 |
+| `POST /api/assessments/records` | 保存评估记录 | 写入原始分/常模换算/`assessmentMetaJson`；L0–L5 由种子纯函数计算并回写学生层级 |
 | `GET /api/assessments/:studentId/records` | 评估记录分组 | 按 `BASELINE` / `STAGE_8W` / `TRANSITION` 分组 |
 | `POST /api/assessments/:id/generate-report` | 生成评估报告 | 当前输出 HTML 报告并返回 `/api/reports/<id>.html` |
 | `POST /api/iep-plans` | 创建 IEP | 校验数字上限 0–15 分钟；`selectedCards` / `weeklySchedule` 序列化为 JSON |

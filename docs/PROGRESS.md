@@ -254,3 +254,36 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 禁止自行重写算分公式或编造题目数据；现有 `AssessmentsService` / 评估页面未改动，接入属于下一轮评估模块开发。
 - 验证：`npm run build`（shared-types + api + web）通过；Node 运行时确认 5 个纯函数可调用，`BEERY_VMI_6_ITEMS` 30 项且 `svgRenderPaths` 可读，TVPS-4 MEM `exposureTimeSec=5`，`DEM_STIMULUS_MATRICES` 三类矩阵可读；未跑 `verify:all`（无业务逻辑变更）。
 - 提交：`feat(shared-types): add assessment scales seed`（本提交）；`:Zone.Identifier` 已删除；未 push。
+
+## 2026-10-20 评估模块接入（种子 5 纯函数）
+
+- ✅ 后端新增 `AssessmentGradingService`：按出生日期计算月龄/年龄，原始分优先调用 `calculateBeeryVmiNorms` / `calculateTvps4ProfileNorms` / `evaluateDemTestResult`，再调用 `determineRecommendedLevelL0ToL5`；删除 `AutoLevelService`。
+- ✅ `AssessmentRecord` 新增 `assessmentMetaJson`，保存原始输入、Beery/TVPS/DEM 换算、六维分数、定级分析与推荐操作卡；老记录该字段为空时报告与页面按空处理。
+- ✅ R2：`submitScaleScore` 改用 `evaluateCeilingRule`，响应新增 `consecutiveZeroCount` / `ceilingItemIndex` / `totalRawScore`，保留 `lastThree` / `message`。
+- ✅ DTO 新增 `beeryVpRaw/McRaw`、`tvps4RawScores`、`demRaw`、`quadrupedHoldSec`、`classroomCopyAccuracyPct`；映射 `stabilityPass→spsrcSensoryStable`，`quadrupedHoldSec` 缺省 `stabilityPass?10:0`，`classroomCopyAccuracyPct` 缺省 `pass?90:70`，NSUCO 取 min 并夹 1–5。
+- ✅ 红区：种子返回的 `triageStatus` 只写 `assessmentMetaJson`，不回写 `student.triageStatus`；`currentLevel` 按定级结果回写。
+- ✅ 前端新增 `components/assessment/`（Beery/TVPS/DEM/Screening/NSUCO/CardPanel）；`AssessmentPage` 用种子常量替换硬编码红区项，增加原始分/标准分输入与题卡 Tab；`StudentPadPage` 增加 `mode:'training'|'assessment'`，评估模式不调 `addDigital`、不写 Trial、不触发护眼遮罩。
+- ✅ 报告 `report.service.ts` 增加评估结论、DEM、TVPS-4 段落。
+- ✅ 共享包新增 `@vmi-tis/shared-types/assessment-seed` 子路径导出；`apps/web/vite.config.ts` 将 workspace 的 `packages/shared-types/dist` 纳入 commonjs 转换，解决 `__exportStar` 在 Vite 构建中无法识别具名常量的问题。
+- 行为变化：种子 L4 阈值 Beery `<90`，Beery 85 由旧算法 L5 变 L4；`verify-task3` 的 L5 用例改为 Beery95/TVPS95，并新增 Beery85→L4、`quadrupedHoldSec=3→L0`、Beery/TVPS/DEM 原始分换算、红区 advisory 断言。
+- 验证：`npm run db:generate`、`npm run db:push`、`npm run build` 通过；Node `v20.20.2` 下 `npm run verify:all` Task 2/3/4/6 全绿。Task 3 新增断言实测：Beery 原始分 12→标准分 63、TVPS-4 七项→综合 136、DEM→`TYPE_III_AUTOMATICITY_PROBLEM`、红区评估记录 L0 且学生 `triageStatus` 保持 `RED_ZONE_LOCKED`。
+- 未验证：无 Chromium/Chrome，浏览器渲染冒烟未执行；APK 已重编译（4.0 MB，`com.vmitis.pad`），`aapt` / `unzip` / `apksigner` 核验通过并包含评估 UI，无设备未做安装/运行验证；本轮未 commit/push（等用户放行）。
+
+## 2026-10-20 评估模块评审修复
+
+- ✅ `assessmentMetaJson.raw` 保存 Beery/VP/MC 原始分、TVPS-4 七项原始分、DEM 五项原始输入与 NSUCO；`verify-task3` 新增 `meta.raw` 断言。
+- ✅ R2 中止保留进度：新增 `terminatedSessions`，中止后保留累计 scores 与 `totalRawScore`，继续提交返回“本轮已中止”；仅 `reset` 清空。页面显示累计原始分并禁用计分按钮，`zeroCount` 改用服务端 `consecutiveZeroCount`。
+- ✅ MVPT-3 只作为定级输入的兼容替代，不再写入 `tvps4Std` 列；新增“仅 MVPT-3=75 时 tvps4Std 为空、定级 L2”断言。
+- ✅ `radarScores` 人工输入优先落库，未提供时用定级雷达；新增 L5 雷达落库断言。
+- ✅ 学生 Pad 的 TVPS-4 题卡传 `revealAnswer={false}`，只高亮选中项、不显示对错；教师端仍显示答案。
+- ✅ 报告 DEM/TVPS 段落缺失时输出“未录入”，保持章节编号连续。
+- ✅ DTO 补 `beeryVmiRaw` 0–30 与 Beery/TVPS/MVPT 标准分 0–200 校验。
+- 验证：`npm run build` 通过；Node `v20.20.2` 下 `npm run verify:all` Task 2/3/4/6 全绿（新增 R2 中止保留、meta.raw、MVPT、雷达断言均通过）；APK 用最终代码重编译（4.0 MB，包含评估 UI，`aapt` / `unzip` / `apksigner` 核验）；无 Chromium/设备未做渲染/安装验证；未 commit/push。
+
+## 2026-10-20 文档：费曼式项目入口与会话收尾
+
+- ✅ 新增 `docs/项目速览-费曼版.md`：非权威阅读导览，覆盖功能、闭环、三端、R1–R4、L0–L5、当前边界与远期目标。
+- ✅ `README.md` 改为项目入口：定位、核心闭环、技术栈、目录、快速开始、评估唯一公式源、文档地图；修正“React 三端（后续任务）”和 Node 24 旧口径。
+- ✅ `docs/index.md` 登记项目速览，并增加“快速理解项目”的阅读路径。
+- ✅ `docs/会话结束.md` 步骤五改为“费曼式收尾报告 + 四行摘要”，要求先用大白话讲清本轮完成/未完成/未验证与下一步原子动作。
+- 验证：README/新文档/索引链接存在性检查通过；`git diff --check` 通过；本轮只改文档，未重跑业务门禁。
