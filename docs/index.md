@@ -38,7 +38,8 @@
 - ✅ `npm run verify:all` 在 Node `v20.20.2` 下通过 Task 2 / 3 / 4 / 6（每个任务全新隔离 SQLite + 3100 测试 API）。
 - ✅ WSL2 已编译 debug APK：`apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（3.8 MB，`com.vmitis.pad`），API 指向 `http://192.168.0.188:3000`。
 - ⏳ 无设备/模拟器，APK 未做安装/运行验证；WSL 访问 Windows 局域网 API 超时。
-- ⏳ 工作区未提交：APK 构建改动 4 项、会话交接体系 5 个新文件 + README 修改、2 个未跟踪文件（其中评估量表种子尚未接入）；具体以 `git status` 为准。
+- ✅ 会话交接体系与 APK 构建配置已提交：`3d943fc` / `fe1b08d`；未 push。
+- ⏳ 仅剩 2 个未跟踪文件：评估量表种子（尚未接入）与 `:Zone.Identifier`；去留待用户拍板。
 - 已知偏差：Kiosk 插件、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突。
 
 ## 文档维护规范

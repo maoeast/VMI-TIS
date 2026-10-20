@@ -244,3 +244,4 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - ✅ 新增 `docs/会话启动.md` / `docs/会话结束.md`：HANDOFF 区块、启动固定摘要、收尾覆写与 Git 处理表。
 - ✅ 新增 `docs/index.md`：文档地图与权威源；`README.md` 增加「文档入口」。
 - 规则：`.continue-here.md` 是当前现场唯一快照；`docs/PROGRESS.md` 只追加历史；两者矛盾以 `.continue-here.md` 为准。
+- 提交：`3d943fc docs: add session handoff system`、`fe1b08d fix(android): build debug APK with LAN API config`；未 push。
