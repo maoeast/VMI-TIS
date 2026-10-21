@@ -34,18 +34,17 @@
 | WSL2 / 历史交接 | `../WSL2_HANDOFF.md`、`PROJECT_HANDOFF_SUMMARY.md`、`DEEPSEEK_HANDOFF.md`、`QUICK_START_CHECKLIST.md`、`CHATGPT_REVIEW_MANUAL.md` | WSL2 任务书与多模型流水线历史资料；参考，不用来覆盖当前状态 |
 | 工程配置 | `../package.json`、`../prisma/schema.prisma`、`../deploy/`、`../apps/web/capacitor.config.ts`、`../apps/web/android/`、`../scripts/` | 运行、构建、部署入口 |
 
-## 当前状态（2026-10-20）
+## 当前状态（2026-10-21）
 
 > 完整现场以 [`../.continue-here.md`](../.continue-here.md) 为准；这里只放里程碑级摘要。
 
-- ✅ Task 1–6 已完成；`f1b1c66` 已处理 29 项 ChatGPT 评审（R1–R4、审计、WebSocket、视频、Docker、Android 配置）。
-- ✅ `npm run verify:all` 在 Node `v20.20.2` 下通过 Task 2 / 3 / 4 / 6（每个任务全新隔离 SQLite + 3100 测试 API）。
-- ✅ WSL2 已编译 debug APK：`apps/web/android/app/build/outputs/apk/debug/app-debug.apk`（4.0 MB，`com.vmitis.pad`；本轮已含评估 UI），API 指向 `http://192.168.0.188:3000`。
-- ⏳ 无设备/模拟器，APK 未做安装/运行验证；WSL 访问 Windows 局域网 API 超时。
-- ✅ 会话交接体系与 APK 构建配置已提交：`3d943fc` / `fe1b08d`；未 push。
-- ✅ 评估模块已接入种子 5 纯函数：`AssessmentGradingService` + `assessmentMetaJson` + 前端题卡/初筛/原始分 + 学生 Pad 评估出示模式；`npm run build` 与 `npm run verify:all` 全绿；已提交 `c484e28`（代码）/ `dba859c`（文档）。
-- ⏳ 浏览器渲染冒烟未执行（本环境无 Chromium/Chrome）；APK 已重编译为 4.0 MB 并包含评估 UI，无设备未做安装/运行验证。
-- 已知偏差：Kiosk 插件、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突。
+- ✅ Task 1–6 已完成；R1–R4、审计、WebSocket、视频、Docker、Android 配置已处理。
+- ✅ `npm run verify:all` 在 Node `v20.20.2` 下通过 Task 2/3/4/6（隔离 SQLite + 3100 测试 API）；`npm run build` 通过。
+- ✅ b1 红区结构化编码（`71546b8`）、b2 评估五步向导（`297efc2`）、b3 入口分离 / b4 跨窗口选学生 / b5 评估双屏（`0c5b0ea` 等）均已提交并收口；未 push。
+- ✅ 平板实测：b3 学生包直达 `/student`（无三端切换、学生选择器保留）；b4 教师选学生后平板跟随；b5 教师出示 Beery 后平板只读跟随。
+- ⏳ Windows API 3000 仍是旧 dist，LAN 上 b4/b5 需重启 API 窗口生效；b5 的 LAN APK 已构建未装。
+- ⏳ 工作区有来源不明的 V2.1 种子（MVPT-4）未提交，待用户决定采用与否。
+- 已知偏差：Kiosk、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突；b4 教师页两条 therapist socket；b5 TVPS 5s 平板逐题未单独实测。
 
 ## 文档维护规范
 
