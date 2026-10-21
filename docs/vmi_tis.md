@@ -60,6 +60,27 @@
    - **量表数据来源分级**：种子侧按 `OFFICIAL_LICENSED` / `MANUAL_ENTRY_ONLY` / `PROJECT_APPROXIMATION` / `STRUCTURE_ONLY` 标注；报告侧尚未携带该标签。只有前两类可写入正式结论；自动换算分标“参考换算”，手册标准分优先。电子题卡仅用于训练与演示，不替代实物题册。
    - **报告**：保存后由服务端自动定级并生成 HTML 报告，页面展示 `reportFileUrl` 链接；报告失败不阻塞保存，历史评估按 `evalPhase` 分组并可逐条重新生成。
 
+#### 6.2.3.1 量表题库与常模现状
+
+`SCALE_PROVENANCE_REGISTRY` 的 10 个量表当前没有任何一个 `OFFICIAL_LICENSED`：5 个 `MANUAL_ENTRY_ONLY`（Beery VMI-6、TVPS-4、MVPT-4、DEM、NSUCO）、2 个 `PROJECT_APPROXIMATION`（第一层初筛、视光判读）、3 个 `STRUCTURE_ONLY`（TVMS-3、RAN/RAS、SPSRC/SIPT）。系统内置换算只标“参考换算”，正式标准分以手册录入为准；电子题卡只用于训练/演示，不替代实物题册。
+
+| 量表 | 数据状态 | 题库 / 刺激材料 | 常模 | 缺什么 |
+|---|---|---|---|---|
+| Beery VMI-6 | MANUAL_ENTRY_ONLY | 30 题结构 + 简化参数化 SVG；VP/MC 由 VMI 题号派生，不是独立官方题卡 | 内置 2–20 岁项目近似锚点；正式标准分手册录入 | 官方 30 题图卡、官方常模 |
+| TVPS-4 | MANUAL_ENTRY_ONLY | 126 条题号索引；题目内容未收录；电子卡由 SVG 生成 | 内置 5–18 岁项目近似矩阵；正式量表分手册录入 | 官方 126 题、官方常模 |
+| MVPT-4 | MANUAL_ENTRY_ONLY | 45 条题号索引（5 维×9）；9 个参数化基元，不是官方图版 | 内置 4–13 岁锚点；14 岁以上只收手册分 | 官方 45 题图版、官方常模 |
+| DEM | MANUAL_ENTRY_ONLY | 项目生成的 Test A/B/C 数字矩阵（40+40+80），非官方图版 | 内置 6–13 岁项目近似截断表 | 官方图版、官方常模 |
+| NSUCO | MANUAL_ENTRY_ONLY | 实物观察规程 + 四因子 1–5 分评分细则（不是题卡型量表） | 内置 Maples (1995) 5–14 岁分年龄/性别最低达标分表，结构完整、数值待一手手册核对 | 一手手册核对；没有“题库”概念 |
+| TVMS-3 | STRUCTURE_ONLY | 39 条结构化索引 + 6 类误差计分；图形复用 VMI 基元 | 没有独立常模表，只按总原始分（78）与误差百分比输出短板剖面 | 题库、常模都没有 |
+| RAN/RAS | STRUCTURE_ONLY | 4 套 5×10 项目生成矩阵，非官方卡片 | 5–12 岁单阈值超时表（无 Mean/SD） | 官方卡片、完整常模 |
+| SPSRC/SIPT | STRUCTURE_ONLY | 6 项 L0 课堂核查 + 130 题结构与子量表题数；题干未收录 | 只有 L0 达标线 + T 分数/-1SD 截断，没有 130 题常模表 | 题库、常模表都没有 |
+| 第一层初筛 | PROJECT_APPROXIMATION | 项目临床核查条目（按方案表 1/表 2 整理，未逐字核对） | 无；只有定性红绿分流规则 | 标准题库、常模都没有 |
+| 视光判读 | PROJECT_APPROXIMATION | 器械检查指标（不是题库） | Hofstetter 公式 + Scheiman & Wick 临床截断值，不是年龄常模表 | 标准题库、年龄常模表都没有 |
+
+**正式结论边界**：只有 `OFFICIAL_LICENSED` / `MANUAL_ENTRY_ONLY` 可写入正式结论；`PROJECT_APPROXIMATION` 与 `STRUCTURE_ONLY` 只做筛查、结构展示或训练参考。TVMS-3 / SPSRC / 第一层初筛 / 视光判读没有可用的年龄常模表；RAN/RAS 只有单阈值超时表，不是完整常模。
+
+**授权资料到位后的更新口径**：先确认授权覆盖“数字化存储、电子呈现、常模换算与报告引用”，再将该量表改为 `OFFICIAL_LICENSED`，用官方题卡与常模表替换项目近似表；未获电子呈现授权的量表仍只做手册分录入，题卡内容不进仓库/前端。更新后补正例与反例验收，并同步 `SCALE_PROVENANCE_REGISTRY`、报告来源标签与 `docs/PROGRESS.md`。
+
 #### 6.2.4 模块四：智能 IEP/ITP 计划制定与可视化排课系统（IEP Builder & Scheduler）
 
 1. **智能 IEP 目标与课程匹配向导**：

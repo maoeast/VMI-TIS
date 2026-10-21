@@ -382,4 +382,12 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 未 commit/push；b7 记录 `docs/batches/b7-mvpt4-integration.md` 已收口（独立评审两轮，第二轮 pass）。
 - 已提交 `00b9eb0`（b6/b7 共 17 个文件）；未 push。开发库 `apps/api/data/vmi_tis.db` 已 force-reset + seed，现为 6 名学生 / 13 张卡；重置前备份 `/tmp/vmi_tis_before_reset_20261021.db`。
 
+## 2026-10-21 量表数据现状文档与主流程冒烟
+
+- ✅ `docs/vmi_tis.md` 新增 §6.2.3.1「量表题库与常模现状」：10 个量表逐项列出数据状态、题库/刺激、常模、缺口与正式结论边界；当前 0 个 `OFFICIAL_LICENSED`（5 `MANUAL_ENTRY_ONLY` / 2 `PROJECT_APPROXIMATION` / 3 `STRUCTURE_ONLY`）。
+- ✅ 主流程冒烟（临时库 `file:/tmp/vmi_flow_20261021.db`，API 3100）：6 学生 / 13 卡 → 创建评估（TVPS-4 七项 + MVPT-4 raw 30 + Beery VMI）→ 自动定级 L4 → 生成 HTML 报告（含 MVPT-4 标准分、薄弱维度）→ 创建 IEP（L4，3 次/周）→ 周课表 → 开始课次 → 切阶段 2 → 记录 trial → 完成课次 → 创建家庭作业 → 家长打卡 → 分析接口返回 1 次已完成课次、1 次已完成作业。
+- ✅ UI 走查（headless browser）：`/web/home`、`/web/students`、`/web/assessment`（第 1–2 步）、`/web/iep`、`/parent`（显示“图形-背景家庭练习 · 已完成 10 分钟”）、`/student`（Pad 游戏与 900 秒额度）均正常渲染。
+- 临时 API 已停止；临时库保留在 `/tmp/vmi_flow_20261021.db`，开发库仍是 6 名学生 / 13 张卡。
+- 本轮文档改动未提交，待用户放行。
+
 
