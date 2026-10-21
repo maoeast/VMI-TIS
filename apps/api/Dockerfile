@@ -1,6 +1,6 @@
 # VMI-TIS API — 医院服务器版（PostgreSQL）
 # 构建：docker compose -f deploy/docker-compose.yml build
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 
 # Prisma 引擎在 Alpine 上需要 OpenSSL；否则会误判为 openssl-1.1.x。
 RUN apk add --no-cache openssl
@@ -19,7 +19,7 @@ COPY . .
 ENV PRISMA_PROVIDER=postgresql
 RUN npm run build
 
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 
 # 运行期 npx prisma db push / schema engine 同样需要 OpenSSL。
 RUN apk add --no-cache openssl

@@ -155,7 +155,7 @@
       - `@capacitor/camera` & `@capacitor/filesystem`（康复师使用 Android 平板直接拍照上传眼科转介回执或录制学生训练过程）。
    - **家长端**：当前实现为响应式移动 H5（与工作台同属 `apps/web`），与工作台共享 `packages/shared-types`；后续可替换为 Taro 小程序。
 - **后端技术栈**：
-   - `Node.js 20 LTS + NestJS + TypeScript`（或 `Express/Fastify + TypeScript`），内置 RESTful API、`Socket.io` 双屏实时同步服务以及静态资源托管（生产环境下由后端直接托管前端 `dist` 目录与上传文件，减少 Nginx 配置复杂度）。
+   - `Node.js 24 LTS + NestJS + TypeScript`（或 `Express/Fastify + TypeScript`），内置 RESTful API、`Socket.io` 双屏实时同步服务以及静态资源托管（生产环境下由后端直接托管前端 `dist` 目录与上传文件，减少 Nginx 配置复杂度）。
 - **数据库双模自适应架构（Prisma ORM：SQLite 零安装单机版 ↔ PostgreSQL 医院集群版）**：
    - 采用 **`Prisma ORM`** 统一数据访问层，通过环境变量 `DATABASE_URL` 无缝切换两种交付模式，**业务代码零修改**：
       1. **轻量免安装交付模式（默认推荐：特教学校资源教室 / 独立康复机构 / 演示一体机）**：使用 **`SQLite 3`**（`DATABASE_URL="file:./data/vmi_tis.db"`）。整个数据库就是一个本地文件，随软件安装包内置全部 13 张操作卡与常模种子数据，客户电脑**无需安装任何数据库软件**，双击启动程序即可使用，拷贝 `vmi_tis.db` 文件即可完成备份。

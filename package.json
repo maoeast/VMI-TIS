@@ -20,6 +20,6 @@
     "verify:all": "node scripts/run-verification.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.22.0"
   }
 }

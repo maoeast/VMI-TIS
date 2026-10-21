@@ -12,7 +12,7 @@
 
 ## Tech Stack（已冻结，勿擅自改）
 
-- **后端**：Node.js 20 LTS + NestJS 10 + Prisma 5 + Socket.io；REST 统一前缀 `/api`；API 直接托管 `apps/web/dist`、报告与上传文件。
+- **后端**：Node.js 24 LTS + NestJS 10 + Prisma 5 + Socket.io；REST 统一前缀 `/api`；API 直接托管 `apps/web/dist`、报告与上传文件。
 - **数据库**：SQLite 3（单机默认）↔ PostgreSQL 15（医院/服务器，Docker）；唯一 Schema `prisma/schema.prisma`；只改 `provider` 与 `DATABASE_URL`；PostgreSQL 副本由 `scripts/prepare-schema.mjs` 构建期生成，不入库。
 - **前端**：React 18 + Vite 5 + TypeScript + Tailwind CSS 3 + Zustand + React Router + Chart.js 4 + socket.io-client；三端是同一 `apps/web` 的路由级终端。
 - **构建期终端模式**：`VITE_TERMINAL` 决定 `apps/web` 构建成哪一端——`all`（缺省，三端切换齐全的演示包）/ `student`（学生专用包：首页 `/student`、隐藏三端切换、保留学生选择器）/ `teacher`（首页 `/web/home`）/ `parent`（首页 `/parent`）；空值与非法值一律按 `all`。判断只在 `apps/web/src/store/useAppStore.ts` 的 `normalizeTerminal` / `TERMINAL_MODE` 一处，路由守卫与 Header 共用；非 `all` 模式下越权直链重定向回本终端首页。不加 `build:student` 之类 npm 脚本（`VITE_TERMINAL=... npm` 前缀在 Windows cmd 不成立），用法见 `README.md`。
@@ -63,7 +63,7 @@
 - 所有 JSON 字段用 `JSON.stringify()` 存 `String`；禁止 SQLite 不支持的标量数组/`@db.Timestamptz`。
 - DTO 用 `class-validator` 校验；服务端不信任客户端传入的红区/额度/晋级结论。
 - 新增/修改 R1–R4 逻辑必须带正例与反例验收；负例至少覆盖绕过路径（PATCH、空初筛、未上传回执、899+2、重复晋级、错误授权码、匿名 Socket、跨学生伪造）。
-- **评估模块唯一数据/公式源**：`packages/shared-types/src/vmi_tis_assessment_scales_seed.ts`。后端 `AssessmentsService` 必须 import 并调用其中 5 个纯函数——`evaluateCeilingRule`（连续 3 题 0 分中止）、`calculateBeeryVmiNorms`、`calculateTvps4ProfileNorms`、`evaluateDemTestResult`（常模标准分换算）、`determineRecommendedLevelL0ToL5`（L0–L5 定级；落库由服务端负责）。前端评估中心与学生端必须读取其中常量数组渲染初筛表单（`RED_ZONE_TRIAGE_ITEMS` / `MILESTONE_0_TO_6_CHECKLIST` / `BEHAVIOR_SCREENING_ITEMS` / `NSUCO_STANDARD_SCALE` / `OPTOMETRY_NORMS`）、Beery VMI `svgRenderPaths`、TVPS-4 `sampleDigitalItems[].exposureTimeSec=5` 记忆题卡、`DEM_STIMULUS_MATRICES` 数字矩阵。**禁止自行重写算分公式或编造题目数据。**
+- **评估模块唯一数据/公式源**：`packages/shared-types/src/vmi_tis_assessment_scales_seed.ts`。后端 `AssessmentsService` 必须 import 并调用其中 6 个纯函数——`evaluateCeilingRule`（连续 3 题 0 分中止）、`calculateBeeryVmiNorms`、`calculateTvps4ProfileNorms`、`calculateMvpt4Norms`（MVPT-4 4–13 岁参考换算；14+ 只收手册分）、`evaluateDemTestResult`（常模标准分换算）、`determineRecommendedLevelL0ToL5`（L0–L5 定级；落库由服务端负责）。前端评估中心与学生端必须读取其中常量数组渲染初筛表单（`RED_ZONE_TRIAGE_ITEMS` / `MILESTONE_0_TO_6_CHECKLIST` / `BEHAVIOR_SCREENING_ITEMS` / `NSUCO_STANDARD_SCALE` / `OPTOMETRY_NORMS`）、Beery VMI `svgRenderPaths`、TVPS-4 `sampleDigitalItems[].exposureTimeSec=5` 记忆题卡、`DEM_STIMULUS_MATRICES` 数字矩阵。**禁止自行重写算分公式或编造题目数据。**
 - 前端三端共用一个构建；不要把 Node 服务端能力带进 SPA；API 基址用 `VITE_API_BASE` / `VITE_SOCKET_URL` / `VITE_SOCKET_TOKEN` 在构建期注入。
 - Android 用 `androidScheme: 'https'`；调局域网 HTTP API 时保留 `android.allowMixedContent: true`，并把服务器 IP 加入 `network_security_config.xml`；生产改 HTTPS 后移除 mixed-content 开关。
 - 注释与文档用中文，代码标识符用英文；沿用现有文件风格，不引入新的格式化/状态管理/UI 框架。
@@ -88,7 +88,7 @@
 ## Quality Gates
 
 - 后端/前端：`npm run build`（shared-types + api + web）通过；Web 侧 `tsc --noEmit` 通过。
-- 验收：`npm run verify:all` 全绿（Task 2/3/4/6；每个任务全新隔离 SQLite + 3100 测试 API）。Node 用 v20.20.2。
+- 验收：`npm run verify:all` 全绿（Task 2/3/4/6；每个任务全新隔离 SQLite + 3100 测试 API）。Node 用 v24.22.0。
 - 数据库：`npm run db:verify`（13 卡 / 6 学生 / 编码与 JSON 字段）。
 - Android：`VITE_API_BASE=... VITE_SOCKET_URL=... VITE_SOCKET_TOKEN=... npm run build -w @vmi-tis/web` → `cd apps/web && npx cap sync android` → `cd android && ./gradlew assembleDebug`；用 `aapt dump badging`、`unzip -l`、`apksigner verify` 核验；无设备就明确写“未做安装/运行验证”。
 - Docker：构建后实测 `/api/health`；不要在未确认端口时 `docker compose up`。

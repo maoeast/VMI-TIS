@@ -390,4 +390,11 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 临时 API 已停止；临时库保留在 `/tmp/vmi_flow_20261021.db`，开发库仍是 6 名学生 / 13 张卡。
 - 本轮文档改动未提交，待用户放行。
 
+## 2026-10-21 · Node 24.22.0 基线 + 学生包 APK
 
+- 用户决定把项目 Node 基线从 `v20.20.2` 改为 `v24.22.0`。已同步 `AGENTS.md`、`README.md`、`WSL2_HANDOFF.md`、`docs/会话启动.md`、`docs/会话结束.md`、`docs/项目速览-费曼版.md`、`docs/index.md`、`docs/vmi_tis.md`、`deploy/start_standalone.bat`、`package.json`、`package-lock.json`、`apps/api/Dockerfile`（`node:24-alpine`），新增 `.nvmrc`。
+- Node `v24.22.0`：`npm run build` EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿。
+- 学生包 APK：`VITE_TERMINAL=student`、`VITE_API_BASE=http://192.168.0.188:3000`、`VITE_SOCKET_URL=http://192.168.0.188:3000`、`VITE_SOCKET_TOKEN=vmi-tis-dev-token`；`npx cap sync android` + `./gradlew --no-daemon --max-workers=2 clean assembleDebug` 成功；3.9 MB，`com.vmitis.pad`，`apksigner verify` 通过；`adb -s 192.168.0.67:34905 install -r` 成功并启动，学生端首页正常。
+- APK 归档：`F:\Projects\VMI-TIS-backup\apk\vmi-tis-pad-20261021-1631-debug.apk`，SHA256 `a0739278b5e43390cfa65bcd9b13b928acaa052d8ee8211392e07d7b0b7f7362`。
+- 注意：b8 的评估徽标与 CSV 是教师端 `/web`，学生包不含这些页面；Pad 不显示 b8 改动。Docker 镜像未用 Node 24 重建/实测；Windows 侧 Node 仍为 24.18.0，需升级到 24.22.0 后复验。
+- 本轮基线文档与 APK 构建改动已提交（哈希见 git），未 push。

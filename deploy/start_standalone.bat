@@ -17,7 +17,7 @@ echo.
 
 where node >nul 2>nul
 if errorlevel 1 (
-  echo [错误] 未找到 Node.js。请安装 Node.js 20 或更高版本后重试。
+  echo [错误] 未找到 Node.js。请安装 Node.js 24.22.0 或更高版本后重试。
   if not defined VMI_TIS_NO_PAUSE pause
   exit /b 1
 )

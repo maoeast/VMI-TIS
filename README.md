@@ -33,7 +33,7 @@
 
 ## 技术栈（已冻结）
 
-- **后端**：Node.js 20 LTS + NestJS 10 + Prisma 5 + Socket.io；REST 统一前缀 `/api`；API 直接托管 `apps/web/dist`、报告与上传文件。
+- **后端**：Node.js 24 LTS + NestJS 10 + Prisma 5 + Socket.io；REST 统一前缀 `/api`；API 直接托管 `apps/web/dist`、报告与上传文件。
 - **数据库**：SQLite 3（单机默认）↔ PostgreSQL 15（医院/服务器，Docker）；唯一 Schema `prisma/schema.prisma`；只改 `provider` 与 `DATABASE_URL`。
 - **前端**：React 18 + Vite 5 + TypeScript + Tailwind CSS 3 + Zustand + React Router + Chart.js 4 + socket.io-client；三端是同一 `apps/web` 的路由级终端。
 - **Android**：Capacitor 6；`apps/web/android`（Gradle 8.2.1 / AGP 8.2.1 / compileSdk 34 / minSdk 22），appId `com.vmitis.pad`，appName `星眸智康 Pad`；Vite 静态产物经 `npx cap sync android` 打入 APK。
@@ -50,7 +50,7 @@ apps/api/                         # NestJS 后端
   src/main.ts                     # 启动入口，/api 前缀，端口 3000
   src/app.controller.ts           # GET /api/health
   src/assessments/                # 四层评估、R1/R2、定级、报告
-    assessment-grading.service.ts # 输入映射 + 调用种子 5 个纯函数
+    assessment-grading.service.ts # 输入映射 + 调用种子 6 个纯函数
   src/prisma/seed.ts              # 13 张操作卡 + 6 名示例学生（幂等）
   src/prisma/verify-seed.ts       # Seed 验收脚本
 apps/web/                         # React 三端（同一构建）
@@ -77,8 +77,8 @@ Schema 只保留根目录一份，`apps/api` 不再复制。Prisma 命令通过
 
 ## 环境要求
 
-- Node.js `v20.20.2`（验收基线；对话默认的 nvm 高版本不作为验收依据）
-- npm 10 或更高版本
+- Node.js `v24.22.0`（验收基线；nvm 默认即该版本）
+- npm 11.19.1
 
 ## 快速开始（SQLite 单机版）
 
@@ -99,7 +99,7 @@ curl http://localhost:3000/api/health
 # {"status":"ok","service":"vmi-tis-api","database":"sqlite",...}
 ```
 
-完整验收（Node `v20.20.2`，每个任务全新隔离 SQLite + 3100 测试 API）：
+完整验收（Node `v24.22.0`，每个任务全新隔离 SQLite + 3100 测试 API）：
 
 ```bash
 npm run verify:all
@@ -201,8 +201,9 @@ PostgreSQL 版 Schema 与 Client）。在 Windows 上先确认 3000/5432 未被�
 
 后端 `apps/api/src/assessments/assessment-grading.service.ts` 只做输入映射与落库，
 算分和定级全部调用 `packages/shared-types/src/vmi_tis_assessment_scales_seed.ts`
-的 5 个纯函数：`evaluateCeilingRule`、`calculateBeeryVmiNorms`、
-`calculateTvps4ProfileNorms`、`evaluateDemTestResult`、`determineRecommendedLevelL0ToL5`。
+的 6 个纯函数：`evaluateCeilingRule`、`calculateBeeryVmiNorms`、
+`calculateTvps4ProfileNorms`、`calculateMvpt4Norms`、`evaluateDemTestResult`、
+`determineRecommendedLevelL0ToL5`。
 
 前端通过 `@vmi-tis/shared-types/assessment-seed` 子路径读取种子常量；根入口继续供
 API/Node 使用。**禁止重写公式或编造题目**。
