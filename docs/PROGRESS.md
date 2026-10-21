@@ -380,5 +380,6 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 验证：`npm run build` EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿，Task 3 新增 8 项 MVPT-4 断言（逐题全 1、手册 70→L2、手册优先、44 项→400、14+→null、全 0→5 薄弱域、报告两行）；临时库 `db:verify` 通过；开发库已 `db:push` 增 `mvpt4_std` 列（65 名历史学生未清理）。
 - 未验证：浏览器 UI 与平板真机；14 岁以上只给 raw 的端到端 API 行为（种子函数已断言）；报告四类数据状态标签。
 - 未 commit/push；b7 记录 `docs/batches/b7-mvpt4-integration.md` 已收口（独立评审两轮，第二轮 pass）。
+- 已提交 `00b9eb0`（b6/b7 共 17 个文件）；未 push。开发库 `apps/api/data/vmi_tis.db` 已 force-reset + seed，现为 6 名学生 / 13 张卡；重置前备份 `/tmp/vmi_tis_before_reset_20261021.db`。
 
 
