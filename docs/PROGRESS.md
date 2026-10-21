@@ -398,3 +398,8 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - APK 归档：`F:\Projects\VMI-TIS-backup\apk\vmi-tis-pad-20261021-1631-debug.apk`，SHA256 `a0739278b5e43390cfa65bcd9b13b928acaa052d8ee8211392e07d7b0b7f7362`。
 - 注意：b8 的评估徽标与 CSV 是教师端 `/web`，学生包不含这些页面；Pad 不显示 b8 改动。Docker 镜像未用 Node 24 重建/实测；Windows 侧 Node 仍为 24.18.0，需升级到 24.22.0 后复验。
 - 本轮基线文档与 APK 构建改动已提交并推送 `origin/main`（`dac3029`）。
+
+## 2026-10-21 · Windows Node 24.22.0 复验
+
+- Windows HEAD `3a17231`，工作区 clean；Node `v24.22.0`（npm 11.12.1）；`git fetch` + `git merge --ff-only` 到 `3a17231`；`npm run build` / `npm run verify:all` / `npm run db:verify` 全绿；`/api/health` ok（PID 58216，会话拉起）。
+- WSL、Windows、`origin/main` 同 HEAD；Docker 未重建；Windows 未重打 APK（平板包由 WSL 构建）。
