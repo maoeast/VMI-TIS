@@ -3,18 +3,26 @@ import { MonitorUp, X } from 'lucide-react';
 import type {
   AssessmentCardChangePayload,
   AssessmentCardType,
+  ScaleCode,
 } from '@vmi-tis/shared-types';
 import { MVPT_4_SCALE_SPEC, TVPS_4_SUBTESTS } from '@vmi-tis/shared-types/assessment-seed';
 import type { ScaleScoreResponse } from '../../api/client';
 import { useAppStore } from '../../store/useAppStore';
 import { BeeryVmiCard } from './BeeryVmiCard';
 import { DemMatrix, type DemTest } from './DemMatrix';
+import { ScaleStatusBadge } from './ScaleStatusBadge';
 import { Tvps4Card, type Tvps4Phase } from './Tvps4Card';
 import {
   RecordNumberField,
   type AssessmentRecordForm,
   type NumericRecordField,
 } from './RecordSummary';
+import {
+  getFormScoreSource,
+  getScaleStatusBadge,
+  getScoreSourceLabel,
+  type ScaleFormScoreState,
+} from '../../utils/scaleStatus';
 
 interface FieldProps {
   form: AssessmentRecordForm;
@@ -49,11 +57,30 @@ function tvpsPhaseFor(
     : { phase: 'options', remaining: 0 };
 }
 
+/** 标准分输入框下的来源提示：数据状态 + 分数来源（规则与报告 / CSV 同源）。 */
+function ScoreSourceHint({
+  scaleCode,
+  state,
+  ageYears,
+}: {
+  scaleCode: ScaleCode;
+  state: ScaleFormScoreState;
+  ageYears?: number | null;
+}) {
+  return (
+    <p className="mt-1 text-[11px] text-slate-400">
+      数据状态：{getScaleStatusBadge(scaleCode).label} · 分数来源：
+      {getScoreSourceLabel(getFormScoreSource(scaleCode, state, ageYears))}
+    </p>
+  );
+}
+
 interface BeerySectionProps extends FieldProps {
   scaleResult: ScaleScoreResponse | null;
   beeryItemNumber: number;
   beeryCompleted: boolean;
   scoreSubmitting?: boolean;
+  ageYears?: number;
   onBeeryItemNumberChange: (itemNumber: number) => void;
   onScore: (score: 0 | 1) => void;
   onResetScale: () => void;
@@ -67,6 +94,7 @@ function BeerySection({
   beeryItemNumber,
   beeryCompleted,
   scoreSubmitting,
+  ageYears,
   onFieldChange,
   onBeeryItemNumberChange,
   onScore,
@@ -81,9 +109,12 @@ function BeerySection({
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-800">
-            第四步：Beery VMI-6 主测验（30 题）
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800">
+              第四步：Beery VMI-6 主测验（30 题）
+            </h2>
+            <ScaleStatusBadge scaleCode="BEERY_VMI_6" />
+          </div>
           <p className="mt-1 text-xs text-slate-500">
             逐题判定 1 分（通过）/ 0 分（未通过）；连续 3 题 0
             分触发 R2 自动中止。完成后点「确认原始分」，把本轮累计原始分写入记录原始分，仍可手工修改。
@@ -192,6 +223,14 @@ function BeerySection({
               onChange={onFieldChange}
             />
           </div>
+          <ScoreSourceHint
+            scaleCode="BEERY_VMI_6"
+            ageYears={ageYears}
+            state={{
+              hasRawInput: form.beeryVmiRaw.trim() !== '',
+              standardScore: form.beeryVmiStd,
+            }}
+          />
           <p className="text-[11px] text-slate-400">
             「确认原始分」把 R2 的累计原始分写入左侧输入框；留空标准分时由服务端按种子常模换算。
           </p>
@@ -231,6 +270,7 @@ function TvpsSection({
   itemIndex,
   phase,
   remaining,
+  ageYears,
   onSubtestCodeChange,
   onItemIndexChange,
   onPhaseChange,
@@ -241,18 +281,32 @@ function TvpsSection({
   itemIndex: number;
   phase: Tvps4Phase;
   remaining: number;
+  ageYears?: number;
   onSubtestCodeChange: (code: string) => void;
   onItemIndexChange: (index: number) => void;
   onPhaseChange: (phase: Tvps4Phase) => void;
   onRemainingChange: (remaining: number) => void;
 }) {
+  const tvpsRawFilled = [
+    form.tvpsDIS,
+    form.tvpsMEM,
+    form.tvpsSPA,
+    form.tvpsCON,
+    form.tvpsSEQ,
+    form.tvpsFGR,
+    form.tvpsCLO,
+  ].every((value) => value.trim() !== '');
+
   return (
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-800">
-            第四步：TVPS-4 视觉感知（样例题卡 + 手工原始分）
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800">
+              第四步：TVPS-4 视觉感知（样例题卡 + 手工原始分）
+            </h2>
+            <ScaleStatusBadge scaleCode="TVPS_4" />
+          </div>
           <p className="mt-1 text-xs text-slate-500">
             种子文件只为 7 个子测验各提供 1 道代表性样例题卡，不包含 18
             题完整题库，因此系统不逐题判分、不伪造题目。请按官方题册施测后，在下方手工录入 7
@@ -325,6 +379,11 @@ function TvpsSection({
               onChange={onFieldChange}
             />
           </div>
+          <ScoreSourceHint
+            scaleCode="TVPS_4"
+            ageYears={ageYears}
+            state={{ hasRawInput: tvpsRawFilled, standardScore: form.tvps4Std }}
+          />
           <p className="mt-2 text-[11px] text-slate-400">
             7 项原始分全部填写时，服务端用种子 calculateTvps4ProfileNorms
             换算综合标准分；只填部分时仅保存已填项。
@@ -350,9 +409,12 @@ function DemSection({
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-800">
-            第四步：DEM 发育性眼动（刺激矩阵 + 手工原始用时）
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800">
+              第四步：DEM 发育性眼动（刺激矩阵 + 手工原始用时）
+            </h2>
+            <ScaleStatusBadge scaleCode="DEM" />
+          </div>
           <p className="mt-1 text-xs text-slate-500">
             用下方刺激矩阵完成 Test A / B / C 后录入用时与错误数；5
             项全部填写才由服务端换算。
@@ -400,7 +462,11 @@ function DemSection({
 }
 
 /** MVPT-4 45 题记分台：实物图册施测，软件只记分。 */
-function Mvpt4Section({ form, onFieldChange }: FieldProps) {
+function Mvpt4Section({
+  form,
+  onFieldChange,
+  ageYears,
+}: FieldProps & { ageYears?: number }) {
   const scores = Array.from({ length: 45 }, (_, index) => {
     const char = form.mvpt4ItemScores45[index];
     return char === '1' ? 1 : char === '0' ? 0 : null;
@@ -454,9 +520,12 @@ function Mvpt4Section({ form, onFieldChange }: FieldProps) {
     <section className="card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold text-slate-800">
-            第四步：MVPT-4 记分台（45 题）
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-800">
+              第四步：MVPT-4 记分台（45 题）
+            </h2>
+            <ScaleStatusBadge scaleCode="MVPT_4" />
+          </div>
           <p className="mt-1 text-xs text-slate-500">
             用医院采购的 MVPT-4 实物图册施测；本面板只记分，不内置官方图版。
             逐题选择 1/0；MEM 题组 19–27 点「开始 5 秒」提示呈现与遮挡。
@@ -546,6 +615,16 @@ function Mvpt4Section({ form, onFieldChange }: FieldProps) {
           onChange={onFieldChange}
         />
       </div>
+      <ScoreSourceHint
+        scaleCode="MVPT_4"
+        ageYears={ageYears}
+        state={{
+          hasRawInput:
+            form.mvpt4RawScore.trim() !== '' ||
+            /^[01]{45}$/.test(form.mvpt4ItemScores45),
+          standardScore: form.mvpt4Std,
+        }}
+      />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -585,9 +664,12 @@ function Mvpt4Section({ form, onFieldChange }: FieldProps) {
 function SupplementSection({ form, onFieldChange }: FieldProps) {
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-bold text-slate-800">
-        第四步：Beery VP / MC 补充录入
-      </h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-bold text-slate-800">
+          第四步：Beery VP / MC 补充录入
+        </h2>
+        <ScaleStatusBadge scaleCode="BEERY_VMI_6" />
+      </div>
       <p className="mt-1 text-xs text-slate-500">
         补充测验原始分可独立录入；留空不参与换算。MVPT-4
         记分台在上方单独录入。
@@ -627,6 +709,7 @@ interface ScaleAssessmentPanelProps extends FieldProps {
   beeryItemNumber: number;
   beeryCompleted: boolean;
   scoreSubmitting?: boolean;
+  ageYears?: number;
   onBeeryItemNumberChange: (itemNumber: number) => void;
   onScore: (score: 0 | 1) => void;
   onResetScale: () => void;
@@ -639,6 +722,7 @@ export function ScaleAssessmentPanel({
   beeryItemNumber,
   beeryCompleted,
   scoreSubmitting,
+  ageYears,
   onFieldChange,
   onBeeryItemNumberChange,
   onScore,
@@ -849,6 +933,7 @@ export function ScaleAssessmentPanel({
         beeryItemNumber={beeryItemNumber}
         beeryCompleted={beeryCompleted}
         scoreSubmitting={scoreSubmitting}
+        ageYears={ageYears}
         onFieldChange={onFieldChange}
         onBeeryItemNumberChange={onBeeryItemNumberChange}
         onScore={onScore}
@@ -864,12 +949,13 @@ export function ScaleAssessmentPanel({
         itemIndex={tvpsItemIndex}
         phase={tvpsPhase}
         remaining={tvpsRemaining}
+        ageYears={ageYears}
         onSubtestCodeChange={changeTvpsSubtest}
         onItemIndexChange={changeTvpsItem}
         onPhaseChange={setTvpsPhase}
         onRemainingChange={setTvpsRemaining}
       />
-      <Mvpt4Section form={form} onFieldChange={onFieldChange} />
+      <Mvpt4Section form={form} onFieldChange={onFieldChange} ageYears={ageYears} />
       <DemSection
         form={form}
         onFieldChange={onFieldChange}

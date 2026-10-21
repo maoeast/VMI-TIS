@@ -1,5 +1,6 @@
 import { OPTOMETRY_NORMS } from '@vmi-tis/shared-types/assessment-seed';
 import { NsucoPanel } from './NsucoPanel';
+import { ScaleStatusBadge } from './ScaleStatusBadge';
 import {
   RecordNumberField,
   type AssessmentRecordForm,
@@ -26,7 +27,10 @@ export function OptometryPanel({
 }: OptometryPanelProps) {
   return (
     <section className="card p-5">
-      <h2 className="text-sm font-bold text-slate-800">第三步：视光与眼动</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-bold text-slate-800">第三步：视光与眼动</h2>
+        <ScaleStatusBadge scaleCode="OPTOMETRY_NORMS" />
+      </div>
       <p className="mt-1 text-xs text-slate-500">
         本步可跳过：未录入的指标保存时按服务端的达标兼容缺省参与定级。
       </p>
@@ -58,9 +62,12 @@ export function OptometryPanel({
       </p>
 
       <div className="mt-5">
-        <h3 className="text-xs font-bold text-slate-700">
-          NSUCO 眼动标准化观察
-        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xs font-bold text-slate-700">
+            NSUCO 眼动标准化观察
+          </h3>
+          <ScaleStatusBadge scaleCode="NSUCO" />
+        </div>
         <div className="mt-2">
           <NsucoPanel
             pursuit={form.nsucoPursuit}

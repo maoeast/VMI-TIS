@@ -1,6 +1,14 @@
 import type { AssessmentMeta, AssessmentRecord } from '@vmi-tis/shared-types';
 import type { AssessmentRecordsResponse } from '../../api/client';
 import { evalPhaseLabel, formatDate, levelLabel } from '../../utils/format';
+import {
+  getFormScoreSource,
+  getRecordScoreSource,
+  getScaleDataStatusLabel,
+  getScoreSourceLabel,
+  type ScaleFormScoreState,
+} from '../../utils/scaleStatus';
+import { ScaleStatusBadge } from './ScaleStatusBadge';
 import { EVAL_PHASE_OPTIONS, type EvalPhaseKey } from './StudentPhaseSelector';
 
 /**
@@ -173,14 +181,34 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** 量表数据状态与分数来源小字（与报告 / CSV / 第 4 步输入框提示同源）。 */
+function FormSourceLine({
+  scaleCode,
+  state,
+  ageYears,
+}: {
+  scaleCode: 'BEERY_VMI_6' | 'TVPS_4' | 'MVPT_4';
+  state: ScaleFormScoreState;
+  ageYears?: number | null;
+}) {
+  return (
+    <p className="mb-1 text-[11px] text-slate-400">
+      数据状态：{getScaleDataStatusLabel(scaleCode)} · 分数来源：
+      {getScoreSourceLabel(getFormScoreSource(scaleCode, state, ageYears))}
+    </p>
+  );
+}
+
 function FormSummarySection({
   studentName,
   evalPhase,
   form,
+  ageYears,
 }: {
   studentName: string;
   evalPhase: EvalPhaseKey;
   form: AssessmentRecordForm;
+  ageYears?: number | null;
 }) {
   const tvpsEntries: Array<[string, string]> = [
     ['DIS', form.tvpsDIS],
@@ -258,9 +286,20 @@ function FormSummarySection({
         </div>
 
         <div>
-          <h3 className="text-xs font-bold text-teal-800">Beery VMI-6</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xs font-bold text-teal-800">Beery VMI-6</h3>
+            <ScaleStatusBadge scaleCode="BEERY_VMI_6" />
+          </div>
           <SummaryRow label="主测验原始分" value={textOrEmpty(form.beeryVmiRaw)} />
           <SummaryRow label="主测验标准分" value={textOrEmpty(form.beeryVmiStd)} />
+          <FormSourceLine
+            scaleCode="BEERY_VMI_6"
+            ageYears={ageYears}
+            state={{
+              hasRawInput: form.beeryVmiRaw.trim() !== '',
+              standardScore: form.beeryVmiStd,
+            }}
+          />
           <SummaryRow
             label="VP 原始分 / 标准分"
             value={pairText(form.beeryVpRaw, form.beeryVpStd)}
@@ -272,11 +311,33 @@ function FormSummarySection({
         </div>
 
         <div>
-          <h3 className="text-xs font-bold text-teal-800">TVPS-4 / MVPT-4</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-xs font-bold text-teal-800">TVPS-4 / MVPT-4</h3>
+            <ScaleStatusBadge scaleCode="TVPS_4" />
+            <ScaleStatusBadge scaleCode="MVPT_4" />
+          </div>
           <SummaryRow label="TVPS-4 标准分" value={textOrEmpty(form.tvps4Std)} />
+          <FormSourceLine
+            scaleCode="TVPS_4"
+            ageYears={ageYears}
+            state={{
+              hasRawInput: tvpsFilled.length === tvpsEntries.length,
+              standardScore: form.tvps4Std,
+            }}
+          />
           <SummaryRow
             label="MVPT-4 原始分 / 标准分"
             value={pairText(form.mvpt4RawScore, form.mvpt4Std)}
+          />
+          <FormSourceLine
+            scaleCode="MVPT_4"
+            ageYears={ageYears}
+            state={{
+              hasRawInput:
+                form.mvpt4RawScore.trim() !== '' ||
+                /^[01]{45}$/.test(form.mvpt4ItemScores45),
+              standardScore: form.mvpt4Std,
+            }}
           />
           <SummaryRow
             label="MVPT-4 逐题已评（未满 45 不入库）"
@@ -316,6 +377,25 @@ function SaveReportSection({
 }) {
   const savedReport =
     savedRecord && report?.recordId === savedRecord.id ? report.url : null;
+  // 已保存记录的分数来源：与报告 / CSV 同一套规则（meta.beery.main / meta.tvps4 / meta.mvpt4）。
+  const beerySource = getRecordScoreSource('BEERY_VMI_6', {
+    standardScore: savedRecord?.beeryVmiStd ?? null,
+    hasRawInput: Boolean(recordMeta?.beery?.main),
+  });
+  const tvps4Source = getRecordScoreSource('TVPS_4', {
+    standardScore:
+      recordMeta?.tvps4?.overallStandardScore ?? savedRecord?.tvps4Std ?? null,
+    hasRawInput: Boolean(recordMeta?.tvps4),
+  });
+  const mvpt4Source = getRecordScoreSource('MVPT_4', {
+    standardScore: recordMeta?.mvpt4?.standardScore ?? null,
+    hasRawInput: recordMeta?.mvpt4?.rawScore != null,
+    normApplied: recordMeta?.mvpt4?.normApplied ?? null,
+  });
+  const beeryStd =
+    recordMeta?.beery?.main?.standardScore ?? savedRecord?.beeryVmiStd ?? null;
+  const tvps4Std =
+    recordMeta?.tvps4?.overallStandardScore ?? savedRecord?.tvps4Std ?? null;
 
   return (
     <section className="card p-5">
@@ -385,19 +465,28 @@ function SaveReportSection({
             推荐操作卡：
             {recordMeta.grading.recommendedSopCardCodes.join('、') || '无'}
           </p>
+          {beeryStd != null && (
+            <p className="mt-1">
+              Beery VMI-6 标准分：{beeryStd}（
+              {getScoreSourceLabel(beerySource)}）
+            </p>
+          )}
           {recordMeta.dem && (
             <p className="mt-1">DEM：{recordMeta.dem.summaryText}</p>
           )}
-          {recordMeta.tvps4 && (
+          {tvps4Std != null && (
             <p className="mt-1">
-              TVPS-4 综合标准分：{recordMeta.tvps4.overallStandardScore}
+              TVPS-4 综合标准分：{tvps4Std}（
+              {getScoreSourceLabel(tvps4Source)}）
             </p>
           )}
           {recordMeta.mvpt4 && (
             <div className="mt-1">
               <p>
-                MVPT-4 标准分：{recordMeta.mvpt4.standardScore ?? '未录入'}（
-                {recordMeta.mvpt4.normApplied ? '内置参考换算' : '手册录入'}）
+                MVPT-4 标准分：{recordMeta.mvpt4.standardScore ?? '—'}
+              </p>
+              <p>
+                MVPT-4 分数来源：{getScoreSourceLabel(mvpt4Source)}
               </p>
               <p>
                 MVPT-4 薄弱维度：
@@ -532,6 +621,7 @@ interface RecordSummaryProps {
   onSave: () => void;
   onGenerateReport: (recordId: string) => void;
   onResetAssessment?: () => void;
+  ageYears?: number | null;
 }
 
 export function RecordSummary({
@@ -548,6 +638,7 @@ export function RecordSummary({
   onSave,
   onGenerateReport,
   onResetAssessment,
+  ageYears,
 }: RecordSummaryProps) {
   return (
     <div className="space-y-5">
@@ -556,6 +647,7 @@ export function RecordSummary({
           studentName={studentName}
           evalPhase={evalPhase}
           form={form}
+          ageYears={ageYears}
         />
         <SaveReportSection
           saving={saving}

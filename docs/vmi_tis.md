@@ -57,7 +57,7 @@
    - **门禁只在前端**：`PENDING_SCREENING` 时步骤 ③–⑤ 禁用，必须先提交初筛；`RED_ZONE_LOCKED` / `REFERRAL_UPLOADED` 时仅禁用步骤 ③–④，仍可在步骤 ⑤ 保存初筛级 L0 记录；`GREEN_ACTIVE` 放行。服务端 `createRecord` 的红区 L0 行为与 R1 训练/排课守卫不变，`triageStatus` 仍只归 `TriageService`。
    - **阶段透传**：`submitScaleScore` 与 `createRecord` 均携带 `evalPhase`；R2 会话键为 `studentId:evalPhase:sessionId`，只有 Beery 主测验走 R2 判分。
    - **原始分链路**：Beery 主测验逐题判 1/0，连续 3 题 0 分由服务端中止；「确认原始分」把本轮 `totalRawScore` 写入记录 `beeryVmiRaw`（仍可手工修改）。TVPS-4 种子只提供样例题卡，7 项原始分手工作业录入，系统不伪造 18 题题库；MVPT-4 已接入 45 题记分台（逐题 1/0、MEM 5 秒提示、原始分与手册标准分），不内置官方图版；DEM 用种子刺激矩阵出示后手工录入用时与错误数。
-   - **量表数据来源分级**：种子侧按 `OFFICIAL_LICENSED` / `MANUAL_ENTRY_ONLY` / `PROJECT_APPROXIMATION` / `STRUCTURE_ONLY` 标注；报告侧尚未携带该标签。只有前两类可写入正式结论；自动换算分标“参考换算”，手册标准分优先。电子题卡仅用于训练与演示，不替代实物题册。
+   - **量表数据来源分级**：种子侧按 `OFFICIAL_LICENSED` / `MANUAL_ENTRY_ONLY` / `PROJECT_APPROXIMATION` / `STRUCTURE_ONLY` 标注，标签文案与分数来源判定统一取种子 `SCALE_DATA_STATUS_LABELS` / `SCALE_SCORE_SOURCE_LABELS` / `resolveScaleScoreSource`；报告与科研 CSV 已携带该标签。只有前两类可写入正式结论；自动换算分标“参考换算”，手册标准分优先。电子题卡仅用于训练与演示，不替代实物题册。
    - **报告**：保存后由服务端自动定级并生成 HTML 报告，页面展示 `reportFileUrl` 链接；报告失败不阻塞保存，历史评估按 `evalPhase` 分组并可逐条重新生成。
 
 #### 6.2.3.1 量表题库与常模现状
@@ -124,7 +124,7 @@
 
 1. **个人六维能力成长雷达图**：从身体稳定与感统（L0）、视觉效率（L1）、视觉感知（L2）、手眼协调与精细（L3）、书写与工具适应（L4）、课堂与生活迁移（L5）六个维度，动态叠加对比入案基线（T0）、阶段中（T1）与阶段复评（T2）能力剖面。
 2. **眼动扫视轨迹图与注视热力图回放**：可视化对比干预前（眼跳无序折返、跳行漏字、局部固着）与干预后（按行从左到右有序扫视、注视点集中稳定）的眼动轨迹动画与 DEM 纵横比变化。
-3. **基于 ICF 框架的多中心科研数据导出**：支持按单案多基线设计或随机对照研究（RCT）要求，批量脱敏导出身体功能指标、活动参与评分及每次课堂过程数据（CSV/Excel 格式）。
+3. **基于 ICF 框架的多中心科研数据导出**：支持按单案多基线设计或随机对照研究（RCT）要求，批量脱敏导出身体功能指标、活动参与评分及每次课堂过程数据（CSV/Excel 格式）。当前实现为评估记录 CSV：`GET /api/analytics/export-csv`（UTF-8 BOM + CRLF + RFC 4180 转义，Excel 直接打开不乱码），列序固定、后续只追加，含学生编码、性别、月龄（按评估日期换算）、班级场景、评估阶段、各量表分与数据状态/分数来源、定级与六维雷达 JSON；不导出姓名、家长电话、出生日期与学生/记录 UUID。课堂过程数据的 Excel 分表导出尚未实现。
 
 #### 6.2.8 模块八：家校协同小程序与标准化课程资源库（Home-School & SOP Library）
 

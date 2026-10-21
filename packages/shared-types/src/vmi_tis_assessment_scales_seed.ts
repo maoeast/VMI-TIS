@@ -174,6 +174,86 @@ export const SCALE_PROVENANCE_REGISTRY: Record<ProvenanceRegistryKey, ScaleProve
   },
 };
 
+/**
+ * 1.2 数据状态与分数来源标签（报告、前端徽标、科研 CSV 的唯一文案来源）
+ * 说明：
+ *   - `SCALE_DATA_STATUS_LABELS` 是 `ScaleDataStatus` 的展示文案，三处（HTML 报告 / 前端徽标 / CSV 列）
+ *     只引用这里，禁止各自写一套中文。
+ *   - `resolveScaleScoreSource` 是「这条量表分从哪来」的唯一判定入口：原始分自动换算标参考换算，
+ *     手册录入标手册，未录入 / 有原始分但缺标准分标未录入。
+ */
+export type ScaleScoreSource =
+  | 'MANUAL'          // 手册录入的正式标准分
+  | 'REFERENCE'       // 内置参考锚点自动换算（以手册为准）
+  | 'PROJECT_RULE'    // 项目判读规则（项目近似状态量表）
+  | 'STRUCTURE_ONLY'  // 只有结构、没有可写入的分数
+  | 'PENDING_REFERENCE' // 已录原始分，保存后走内置参考换算
+  | 'NOT_ENTERED'     // 尚未录入
+  | 'NEEDS_MANUAL';   // 已录原始分但缺标准分，需补手册标准分
+
+export const SCALE_DATA_STATUS_LABELS: Record<
+  ScaleDataStatus,
+  { label: string; description: string }
+> = {
+  OFFICIAL_LICENSED: {
+    label: '官方授权',
+    description: '有授权的官方题卡与官方常模表',
+  },
+  MANUAL_ENTRY_ONLY: {
+    label: '手册录入',
+    description: '只做记分台，正式标准分由手册录入',
+  },
+  PROJECT_APPROXIMATION: {
+    label: '项目近似',
+    description: '结构完整，数值为项目近似',
+  },
+  STRUCTURE_ONLY: {
+    label: '仅结构',
+    description: '只有题号/结构，无题目内容与常模',
+  },
+};
+
+export const SCALE_SCORE_SOURCE_LABELS: Record<ScaleScoreSource, string> = {
+  MANUAL: '手册录入（正式）',
+  REFERENCE: '内置参考换算（以手册为准）',
+  PENDING_REFERENCE: '保存后换算为参考分',
+  PROJECT_RULE: '项目判读规则',
+  STRUCTURE_ONLY: '仅结构',
+  NOT_ENTERED: '未录入',
+  NEEDS_MANUAL: '未录入（需手册标准分）',
+};
+
+export interface ScaleScoreSourceInput {
+  dataStatus: ScaleDataStatus;
+  /** 已落库的分数；DEM 这类没有标准分的量传分型等非空值。null / undefined / 空串表示未录入。 */
+  standardScore: number | string | null | undefined;
+  /** true = 走了内置参考换算；false = 手册录入；null / undefined = 该量表没有这个字段（Beery / TVPS-4 / DEM）。 */
+  normApplied?: boolean | null;
+  /** 是否录入了原始分（原始分是换算的依据）。 */
+  hasRawInput?: boolean;
+}
+
+/**
+ * 判定一条量表分的来源。判定顺序按数据状态 → 有无分数 → 是否走了内置换算：
+ * 仅结构 / 项目近似量表直接返回对应来源；没有分数时区分「未录入」与「有原始分待换算」；
+ * 有分数时按 normApplied 三态区分手册与参考换算。
+ */
+export function resolveScaleScoreSource(
+  input: ScaleScoreSourceInput
+): ScaleScoreSource {
+  if (input.dataStatus === 'STRUCTURE_ONLY') return 'STRUCTURE_ONLY';
+  if (input.dataStatus === 'PROJECT_APPROXIMATION') return 'PROJECT_RULE';
+  const hasScore =
+    input.standardScore !== null &&
+    input.standardScore !== undefined &&
+    String(input.standardScore).trim() !== '';
+  const hasRawInput = input.hasRawInput === true;
+  if (!hasScore) return hasRawInput ? 'NEEDS_MANUAL' : 'NOT_ENTERED';
+  if (input.normApplied === false) return 'MANUAL';
+  if (input.normApplied === true) return 'REFERENCE';
+  return hasRawInput ? 'REFERENCE' : 'MANUAL';
+}
+
 // ============================================================================
 // 二、 第一层：入案初筛问卷、0–6岁发育里程碑核查表（原方案表2）与眼科红区熔断字典
 // ============================================================================

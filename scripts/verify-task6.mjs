@@ -3,8 +3,11 @@
  * Task 6 验收脚本：Socket.io 实时通道（教师投屏、Pad 回传、五段式广播）。
  */
 import { io } from 'socket.io-client';
+import { assertSafeTarget } from './verify-guard.mjs';
 
-const ORIGIN = process.env.API_ORIGIN ?? 'http://localhost:3000';
+const ORIGIN = assertSafeTarget(
+  process.env.API_ORIGIN ?? 'http://localhost:3100',
+);
 const ACTOR_HEADERS = {
   'x-user-id': 'therapist_zhou_min',
   'x-user-name': encodeURIComponent('周敏'),

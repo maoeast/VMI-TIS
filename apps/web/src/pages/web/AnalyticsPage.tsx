@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, RefreshCw, Target, TrendingUp, Users } from 'lucide-react';
+import { Activity, Download, RefreshCw, Target, TrendingUp, Users } from 'lucide-react';
 import {
   CategoryScale,
   Chart as ChartJS,
@@ -17,6 +17,7 @@ import type { ChartOptions } from 'chart.js';
 import { Line, Radar } from 'react-chartjs-2';
 import {
   analyticsApi,
+  resolveApiUrl,
   type AnalyticsOverview,
   type StudentAnalytics,
 } from '../../api/client';
@@ -149,10 +150,20 @@ export function AnalyticsPage() {
         title="数据画像与眼动热力图"
         description="全员能力分布、六维雷达、正确率趋势与数字训练时长"
         actions={
-          <button type="button" className="btn-secondary" onClick={() => void load()}>
-            <RefreshCw className="mr-1 inline h-4 w-4" />
-            刷新
-          </button>
+          <>
+            <a
+              href={resolveApiUrl('/api/analytics/export-csv')}
+              download
+              className="btn-secondary inline-flex items-center"
+            >
+              <Download className="mr-1 h-4 w-4" />
+              导出科研数据（CSV）
+            </a>
+            <button type="button" className="btn-secondary" onClick={() => void load()}>
+              <RefreshCw className="mr-1 inline h-4 w-4" />
+              刷新
+            </button>
+          </>
         }
       />
 

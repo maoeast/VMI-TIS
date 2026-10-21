@@ -3,11 +3,14 @@
  * Task 3 验收脚本：R2 连续 3 题 0 分中止、L0–L5 自动分级、评估记录分组、报告生成。
  */
 import { createRequire } from 'node:module';
+import { assertSafeTarget } from './verify-guard.mjs';
 
 const require = createRequire(import.meta.url);
 const seed = require('@vmi-tis/shared-types');
 
-const BASE = process.env.API_BASE ?? 'http://localhost:3000/api';
+const BASE = assertSafeTarget(
+  process.env.API_BASE ?? 'http://localhost:3100/api',
+);
 const ORIGIN = BASE.replace(/\/api\/?$/, '');
 const failures = [];
 
@@ -458,6 +461,20 @@ async function main() {
     JSON.stringify(mvpt4Adult),
   );
 
+  const source = seed.resolveScaleScoreSource;
+  check(
+    '分数来源纯函数：手册/参考/未录入/需手册/仅结构/项目近似',
+    source({ dataStatus: 'MANUAL_ENTRY_ONLY', standardScore: 70, normApplied: false }) === 'MANUAL' &&
+      source({ dataStatus: 'MANUAL_ENTRY_ONLY', standardScore: 90, normApplied: true }) === 'REFERENCE' &&
+      source({ dataStatus: 'MANUAL_ENTRY_ONLY', standardScore: null, hasRawInput: false }) === 'NOT_ENTERED' &&
+      source({ dataStatus: 'MANUAL_ENTRY_ONLY', standardScore: null, hasRawInput: true }) === 'NEEDS_MANUAL' &&
+      source({ dataStatus: 'STRUCTURE_ONLY', standardScore: null }) === 'STRUCTURE_ONLY' &&
+      source({ dataStatus: 'PROJECT_APPROXIMATION', standardScore: null }) === 'PROJECT_RULE' &&
+      seed.SCALE_SCORE_SOURCE_LABELS.PENDING_REFERENCE === '保存后换算为参考分',
+    '来源判定不符合六态',
+  );
+
+
   const mvpt4Weak = await createRecord(other.id, {
     stabilityPass: true,
     npcCm: 7,
@@ -493,6 +510,32 @@ async function main() {
       mvpt4ReportHtml.includes('MVPT-4 原始分') &&
       mvpt4ReportHtml.includes('MVPT-4 薄弱维度'),
     `status=${mvpt4Report.status}`,
+  );
+  check(
+    '报告含数据状态标签与量表数据状态说明表',
+    mvpt4ReportHtml.includes('数据状态') &&
+      mvpt4ReportHtml.includes('量表数据状态说明'),
+    '报告缺少数据状态标签或说明表',
+  );
+  check(
+    '自动换算记录的报告标注「内置参考换算」',
+    mvpt4ReportHtml.includes('MVPT-4 分数来源</th><td>内置参考换算'),
+    '报告未把自动换算的 MVPT-4 标为内置参考换算',
+  );
+  const mvpt4ManualReport = await call(
+    `/assessments/${mvpt4Manual.body.id}/generate-report`,
+    { method: 'POST' },
+  );
+  const mvpt4ManualReportHtml = mvpt4ManualReport.body?.reportFileUrl
+    ? await (
+        await fetch(`${ORIGIN}${mvpt4ManualReport.body.reportFileUrl}`)
+      ).text()
+    : '';
+  check(
+    '手册标准分记录的报告标注「手册录入」',
+    mvpt4ManualReport.status === 201 &&
+      mvpt4ManualReportHtml.includes('MVPT-4 分数来源</th><td>手册录入'),
+    `status=${mvpt4ManualReport.status}`,
   );
   const mvpt4WeakReport = await call(
     `/assessments/${mvpt4Weak.body.id}/generate-report`,

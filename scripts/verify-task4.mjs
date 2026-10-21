@@ -2,7 +2,11 @@
 /**
  * Task 4 验收脚本：IEP、课堂记分台、R3 晋级、R4 护眼硬锁、工作台/作业/分析接口。
  */
-const BASE = process.env.API_BASE ?? 'http://localhost:3000/api';
+import { assertSafeTarget } from './verify-guard.mjs';
+
+const BASE = assertSafeTarget(
+  process.env.API_BASE ?? 'http://localhost:3100/api',
+);
 const failures = [];
 
 function check(name, condition, detail) {
@@ -430,6 +434,97 @@ async function main() {
       `actions=${[...actions].join(',')}`,
     );
   }
+
+  // ===== b8 科研 CSV 导出：BOM、表头脱敏、列序与数据行 =====
+  const csvRecord = await post('/assessments/records', {
+    studentId: target.id,
+    evalPhase: 'BASELINE',
+    npcCm: 7,
+    nsucoScore: { pursuit: 4, saccade: 4, vergence: 4 },
+    beeryVmiRaw: 18,
+    mvpt4RawScore: 30,
+  });
+  check(
+    '为 CSV 导出准备一条评估记录',
+    csvRecord.status === 201,
+    `status=${csvRecord.status}, body=${JSON.stringify(csvRecord.body).slice(0, 200)}`,
+  );
+
+  const csvResponse = await fetch(`${BASE}/analytics/export-csv`);
+  const csvBuffer = Buffer.from(await csvResponse.arrayBuffer());
+  const csvText = csvBuffer.toString('utf8');
+  const csvLines = csvText.replace(/^\uFEFF/, '').split('\r\n');
+  const csvHeader = csvLines[0] ?? '';
+  check(
+    'CSV 导出返回 200 + text/csv',
+    csvResponse.status === 200 &&
+      (csvResponse.headers.get('content-type') ?? '').includes('text/csv'),
+    `status=${csvResponse.status}, type=${csvResponse.headers.get('content-type')}`,
+  );
+  check(
+    'CSV 以 UTF-8 BOM 开头',
+    csvBuffer[0] === 0xef && csvBuffer[1] === 0xbb && csvBuffer[2] === 0xbf,
+    `前三个字节=${[...csvBuffer.slice(0, 3)].join(',')}`,
+  );
+  check(
+    'CSV 表头含学生编码 / Beery VMI-6 数据状态 / MVPT-4 分数来源',
+    csvHeader.includes('学生编码') &&
+      csvHeader.includes('Beery VMI-6 数据状态') &&
+      csvHeader.includes('MVPT-4 分数来源'),
+    `header=${csvHeader}`,
+  );
+  check(
+    'CSV 表头不含姓名 / 出生日期',
+    !csvHeader.includes('姓名') && !csvHeader.includes('出生日期'),
+    `header=${csvHeader}`,
+  );
+  const expectedCsvHeader = [
+    '学生编码',
+    '性别',
+    '月龄',
+    '班级场景',
+    '评估阶段',
+    '评估日期',
+    '分流状态',
+    '当前层级',
+    '自动定级',
+    'Beery VMI-6 原始分',
+    'Beery VMI-6 标准分',
+    'Beery VMI-6 数据状态',
+    'Beery VMI-6 分数来源',
+    'Beery VP 标准分',
+    'Beery MC 标准分',
+    'TVPS-4 标准分',
+    'TVPS-4 数据状态',
+    'TVPS-4 分数来源',
+    'MVPT-4 标准分',
+    'MVPT-4 数据状态',
+    'MVPT-4 分数来源',
+    'DEM 分型',
+    'DEM 数据状态',
+    'DEM 分数来源',
+    'NSUCO 追视',
+    'NSUCO 扫视',
+    'NSUCO 数据状态',
+    'NSUCO 分数来源',
+    'NPC cm',
+    '调节灵活度 cpm',
+    '视光判读数据状态',
+    '视光判读分数来源',
+    '六维雷达 JSON',
+  ].join(',');
+  check(
+    'CSV 列序与设计一致（33 列，后续只追加）',
+    csvHeader === expectedCsvHeader,
+    `header=${csvHeader}`,
+  );
+  const csvDataRows = csvLines.slice(1).filter((row) => row !== '');
+  check(
+    'CSV 数据行含学生编码且不含学生 UUID',
+    csvDataRows.some((row) => row.includes('VMI-2026002')) &&
+      !csvText.includes(target.id),
+    `rows=${csvDataRows.length}`,
+  );
 
   if (failures.length > 0) {
     console.error(`\nTask 4 验收失败：${failures.length} 项`);

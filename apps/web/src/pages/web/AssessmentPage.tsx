@@ -831,6 +831,7 @@ export function AssessmentPage() {
           onResetScale={() => void resetScale()}
           onConfirmRawScore={confirmRawScore}
           scoreSubmitting={submittingScore}
+          ageYears={ageYears}
         />
       )}
 
@@ -849,6 +850,7 @@ export function AssessmentPage() {
           onSave={() => void saveRecord()}
           onGenerateReport={(recordId) => void generateReport(recordId)}
           onResetAssessment={resetAssessment}
+          ageYears={ageYears}
         />
       )}
 

@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
  * Task 2 验收脚本：学生档案 CRUD、筛选、Excel 导入、R1 红区熔断、审计日志。
- * 用法：先启动 API（可用测试库），再运行 node scripts/verify-task2.mjs
+ * 用法：先启动隔离测试 API（默认 3100），再运行 node scripts/verify-task2.mjs
  */
-const BASE = process.env.API_BASE ?? 'http://localhost:3000/api';
+import { assertSafeTarget } from './verify-guard.mjs';
+
+const BASE = assertSafeTarget(
+  process.env.API_BASE ?? 'http://localhost:3100/api',
+);
 
 const ACTOR_HEADERS = {
   'content-type': 'application/json',
