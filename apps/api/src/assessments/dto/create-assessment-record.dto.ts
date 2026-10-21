@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
@@ -206,6 +209,27 @@ export class CreateAssessmentRecordDto {
   @Min(0)
   @Max(200)
   mvpt3Std?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(45)
+  mvpt4RawScore?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(45)
+  @ArrayMaxSize(45)
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(1, { each: true })
+  mvpt4ItemScores45?: number[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(200)
+  mvpt4Std?: number;
 
   @IsOptional()
   @IsString()

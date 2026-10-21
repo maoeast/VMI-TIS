@@ -60,7 +60,7 @@ model AssessmentTriageReferral {
   @@map("assessments_triage_referrals")
 }
 
-// ==================== 表3：四层评估记录表（Beery VMI-6 / TVPS-4 / MVPT-3 / DEM / NPC / NSUCO）====================
+// ==================== 表3：四层评估记录表（Beery VMI-6 / TVPS-4 / MVPT-4 / DEM / NPC / NSUCO；mvpt3Std 为历史列）====================
 model AssessmentRecord {
   id               String   @id @default(uuid())
   studentId        String   @map("student_id")
@@ -78,7 +78,8 @@ model AssessmentRecord {
   beeryVpStd       Int?     @map("beery_vp_std")
   beeryMcStd       Int?     @map("beery_mc_std")
   tvps4Std         Int?     @map("tvps4_std")
-  mvpt3Std         Int?     @map("mvpt3_std")
+  mvpt3Std         Int?     @map("mvpt3_std") // 历史 MVPT-3 标准分（新流程停用）
+  mvpt4Std         Int?     @map("mvpt4_std") // MVPT-4 标准分（4–13 岁自动参考换算，14+ 手册录入）
   demNormTier      String?  @map("dem_norm_tier")
   radarScoresJson  String?  @map("radar_scores_json")       // 六维雷达图分数JSON字符串
   assessmentMetaJson String? @map("assessment_meta_json")   // 评估原始输入、常模换算、定级分析 JSON

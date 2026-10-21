@@ -1,14 +1,16 @@
 /**
  * 星眸智康 VMI-TIS — 孤独症学生视觉运动整合训练干预系统
- * 评估子系统全量量表题库、SVG刺激矩阵、临床视光常模与 L0–L5 自动定级算法种子字典 (V2.0 全量完整版)
+ * 评估子系统全量量表题库、参数化SVG刺激生成引擎、临床视光常模与 L0–L5 自动定级算法种子字典
+ * (V2.3.1 临床审计修正版 · 文献出处与数据状态标注；题卡数组按题号/结构收录，非官方图版；常模热覆盖未实现)
  *
  * 编制依据：《孤独症学生视觉运动整合训练干预系统整体设计方案（池霞团队方法体系）》第二章 & 第三章
  *
- * 工程存放路径建议（对应您的 VMI-TIS 根目录截图）：
+ * 工程存放路径建议：
  *   1. 主存放路径：`VMI-TIS/packages/shared-types/src/vmi_tis_assessment_scales_seed.ts`
  *      并在 `VMI-TIS/packages/shared-types/src/index.ts` 中添加：
  *      `export * from './vmi_tis_assessment_scales_seed';`
- *   2. 数据库灌入路径：在 `VMI-TIS/prisma/seed.ts` 中直接 import 本文件常量，一键写入 SQLite / PostgreSQL。
+ *   2. 数据库灌入路径：在 `apps/api/src/prisma/seed.ts` 中直接 import 本文件常量，一键写入 SQLite / PostgreSQL。
+ *   3. 前端施测渲染：题号/指导语可从本文件读取；参数化 SVG 仅用于训练与演示，不作为官方施测题卡。
  */
 
 // ============================================================================
@@ -20,18 +22,157 @@ export type VmiCapabilityLevel = 'L0' | 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
 export type AssessmentTier =
   | 'TIER_1_SCREENING'   // 第一层：初筛问卷、0-6岁发育里程碑与眼科红区预警
   | 'TIER_2_OPTOMETRY'   // 第二层：视觉通路与视觉效率专科检查（调节/聚散/双眼视/NSUCO）
-  | 'TIER_3_SCALES'      // 第三层：8大标准化功能评估量表（Beery VMI-6 / TVPS-4 / MVPT-3 / DEM / TVMS-3 / RAN / SPSRC）
+  | 'TIER_3_SCALES'      // 第三层：标准化功能评估量表（Beery VMI-6 / TVPS-4 / MVPT-4 / DEM / TVMS-3 / RAN / SPSRC）
   | 'TIER_4_PROCESS';    // 第四层：60Hz眼动仪客观指标与课堂10回合过程评估
 
+/**
+ * 标准量表枚举（已正式弃用旧版 MVPT_3，全面统一为 4岁–成人通用的 45 题 MVPT_4）
+ */
 export type ScaleCode =
   | 'BEERY_VMI_6'        // 视觉运动整合发育测验（第6版：主测验30题 + VP视觉感知补充30题 + MC运动协调补充30题）
-  | 'TVPS_4'             // 视觉感知能力测试（第4版：7大无运动视觉感知子测验 × 18题）
-  | 'MVPT_3'             // 无运动视觉感知测验（第3版：4-8岁或低配合度快速指认）
+  | 'TVPS_4'             // 视觉感知能力测试（第4版：7大无运动视觉感知子测验 × 18题 = 126题，深度剖析各子维度）
+  | 'MVPT_4'             // 无运动视觉感知测验（第4版最新实物版：45题流线型4选1指认，4岁–成人通用，15分钟快速评估纯视觉感知）
   | 'DEM'                // 发育性眼动测验（≥6岁 Test A/B 纵向认读 + Test C 横向扫视 80数字矩阵）
   | 'NSUCO'              // 东北部州立大学视光学院眼动标准化观察量表（注视/追视/扫视 1-5分）
   | 'TVMS_3'             // 视觉运动技能测试（第3版：线条、角度、闭合与比例6维误差分析）
   | 'RAN_RAS'            // 快速自动命名与快速交替刺激测验（5×10 颜色/数字/物体/字母矩阵）
   | 'SPSRC_SIPT';        // 感觉处理与自我调节检核表 / 感觉统合与运用能力测验（L0底座筛查）
+
+export type PerceptualDomainCode = 'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO';
+
+/**
+ * 1.1 全量表学术文献、官方手册出处与版权合规模式声明字典 (回应代码审查关于出处与性质的核验)
+ * 说明：
+ *   - 受国际出版商版权保护的商业量表（Beery VMI-6 / TVPS-4 / MVPT-4）默认只做「记分台」：
+ *     ① 评估师使用医院采购的正版实物题册施测，软件按题号录入选项/得分；
+ *     ② 内置参数化 SVG 仅用于训练与演示，不作为官方施测题卡；
+ *     ③ 常模热插拔（CustomNormOverride）尚未实现；正式标准分以手册录入为准。
+ *   - 每个量表的数据状态见 `SCALE_PROVENANCE_REGISTRY[].dataStatus`。
+ */
+export type ScaleDataStatus =
+  | 'OFFICIAL_LICENSED'        // 有授权的官方题卡与官方常模表
+  | 'MANUAL_ENTRY_ONLY'        // 只做记分台，正式标准分由手册录入
+  | 'PROJECT_APPROXIMATION'    // 结构完整，数值为项目近似
+  | 'STRUCTURE_ONLY';          // 只有题号/结构，无题目内容与常模
+
+export type ProvenanceRegistryKey =
+  | ScaleCode
+  | 'TIER_1_SCREENING'
+  | 'OPTOMETRY_NORMS';
+
+export interface ScaleProvenanceMetadata {
+  scaleCode: ProvenanceRegistryKey;
+  nameCn: string;
+  dataStatus: ScaleDataStatus;
+  sourceNature: 'PROJECT_CLINICAL_CHECKLIST' | 'STANDARDIZED_PUBLISHED_SCALE' | 'OPTOMETRIC_CLINICAL_CRITERIA';
+  schemeSectionRef: string;
+  officialManualCitation: string;
+  stimulusDataNature: string;
+  normDataNature: string;
+}
+
+export const SCALE_PROVENANCE_REGISTRY: Record<ProvenanceRegistryKey, ScaleProvenanceMetadata> = {
+  TIER_1_SCREENING: {
+    scaleCode: 'TIER_1_SCREENING',
+    nameCn: '入案第一层初筛三组（眼科红区预警 / 0–6岁视觉发育里程碑 / 日常视觉行为问卷）',
+    dataStatus: 'PROJECT_APPROXIMATION',
+    sourceNature: 'PROJECT_CLINICAL_CHECKLIST',
+    schemeSectionRef: '《整体设计方案（池霞团队方法体系）》第二章 2.1–2.3 节、表1 & 表2',
+    officialManualCitation: '南京市妇幼保健院池霞团队《孤独症学生视觉运动整合训练干预系统整体设计方案》临床分流共识，参考 AOA (American Optometric Association) Pediatric Eye Exam Guidelines',
+    stimulusDataNature: '结构化临床症状与发育行为核查条目（按原方案表1、表2整理，未逐字核对）',
+    normDataNature: '定性红绿区分流规则（触发任一红区项即执行规则 R1 熔断转介；里程碑按实足月龄区间比对）',
+  },
+  NSUCO: {
+    scaleCode: 'NSUCO',
+    nameCn: 'NSUCO 东北部州立大学视光学院眼动标准化观察量表',
+    dataStatus: 'MANUAL_ENTRY_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.2.2 节 & 表3',
+    officialManualCitation: 'Maples, W. C. (1995). NSUCO Oculomotor Test Manual. Santa Ana, CA: Optometric Extension Program Foundation (OEPF).',
+    stimulusDataNature: '标准化逗引视标实物观察规程（平滑追踪2圈 + 扫视5周期，含 Ability/Accuracy/Head/Body 四因子 1–5 分评分细则）',
+    normDataNature: '内置 Maples (1995) 5–14 岁分年龄/分性别最低达标分表（结构完整，数值待一手手册核对）',
+  },
+  OPTOMETRY_NORMS: {
+    scaleCode: 'OPTOMETRY_NORMS',
+    nameCn: '第二层视光专科检查临床判读标准（调节幅度/翻转拍灵活度/NPC集合近点）',
+    dataStatus: 'PROJECT_APPROXIMATION',
+    sourceNature: 'OPTOMETRIC_CLINICAL_CRITERIA',
+    schemeSectionRef: '《整体设计方案》第三章 3.2.1 节',
+    officialManualCitation: 'Hofstetter, H. W. (1950); Scheiman, M., & Wick, B. (2019). Clinical Management of Binocular Vision: Heterophoric, Accommodative, and Eye Movement Disorders (5th ed.). Wolters Kluwer.',
+    stimulusDataNature: '眼科/视光专科器械检查指标（Age Duane 尺、±2.00D 双面镜翻转拍、Worth 四点、Randot 立体视）',
+    normDataNature: 'Hofstetter 公开公式 (最小调节幅度 = 15 - 0.25×年龄) + Scheiman & Wick (2019) 学龄儿童临床截断值',
+  },
+  BEERY_VMI_6: {
+    scaleCode: 'BEERY_VMI_6',
+    nameCn: 'Beery-Buktenica 视觉运动整合发育测验（第6版：主测验30题 + VP感知补充30题 + MC运动协调30题）',
+    dataStatus: 'MANUAL_ENTRY_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.3.1 节 & 表3',
+    officialManualCitation: 'Beery, K. E., Buktenica, N. A., & Beery, N. A. (2010). The Beery-Buktenica Developmental Test of Visual-Motor Integration (6th ed., Beery VMI-6). Bloomington, MN: Pearson.',
+    stimulusDataNature: '主测验 30 题结构 + 简化参数化 SVG；VP/MC 为由 VMI 题号派生的结构化索引，不是独立官方题卡',
+    normDataNature: '内置 2–20 岁等效发展月龄与分龄标准分锚点表（项目近似）；正式标准分以手册录入为准',
+  },
+  TVPS_4: {
+    scaleCode: 'TVPS_4',
+    nameCn: '视觉感知能力测试（第4版，7大无运动视觉感知子测验 × 18题 = 126题）',
+    dataStatus: 'MANUAL_ENTRY_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.4.1 节 & 表3',
+    officialManualCitation: 'Martin, N. A. (2017). Test of Visual Perceptual Skills (4th ed., TVPS-4). Novato, CA: Academic Therapy Publications (ATP Assessments).',
+    stimulusDataNature: '126 条题号索引 (TVPS_4_126_ITEMS，7×18)；题目内容未收录，电子题卡由参数化 SVG 生成，非官方题卡',
+    normDataNature: '内置 5–18 岁项目近似查表矩阵 (TVPS_4_AGE_NORM_MATRIX)；正式量表分以手册录入为准',
+  },
+  MVPT_4: {
+    scaleCode: 'MVPT_4',
+    nameCn: '无运动视觉感知测验（第4版，空间视觉运动感知检查系统第四版，全表45题）',
+    dataStatus: 'MANUAL_ENTRY_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.4.2 节升级版（配套医院采购 MVPT-4 实物检查箱）',
+    officialManualCitation: 'Colarusso, R. P., & Hammill, D. D. (2015). Motor-Free Visual Perception Test-4 (MVPT-4). Novato, CA: Academic Therapy Publications (ATP Assessments).',
+    stimulusDataNature: '45 条题号索引 (MVPT_4_45_ITEMS，5 维×9)；题目内容未收录，电子题卡由 9 个参数化基元生成，非官方图版',
+    normDataNature: '内置 4–13 岁锚点表（项目近似）；14 岁以上只接受手册标准分',
+  },
+  DEM: {
+    scaleCode: 'DEM',
+    nameCn: '发育性眼动测验（Developmental Eye Movement Test，Test A/B 纵列80数字 + Test C 横向80数字）',
+    dataStatus: 'MANUAL_ENTRY_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.2.2 节 & 表3',
+    officialManualCitation: 'Garzia, R. P., Richman, J. E., Nicholson, S. B., & Letourneau, J. G. (1990). A new visual-verbal saccade test: the Developmental Eye Movement test (DEM). Journal of the American Optometric Association, 61(2), 124-135.',
+    stimulusDataNature: '项目生成的 Test A/B/C 数字矩阵（40+40+80）；非官方图版',
+    normDataNature: '内置 6–13 岁项目近似截断表（引 Garzia et al. 1990）；正式分型以手册为准',
+  },
+  TVMS_3: {
+    scaleCode: 'TVMS_3',
+    nameCn: '视觉运动技能测试（第3版，39幅几何图形精细动作失真度分析）',
+    dataStatus: 'STRUCTURE_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.3.2 节 & 表3',
+    officialManualCitation: 'Martin, N. A. (2010). Test of Visual-Motor Skills (3rd ed., TVMS-3). Novato, CA: Academic Therapy Publications.',
+    stimulusDataNature: '6 类误差计分体系 + 39 条结构化索引（0/1/2 分制）；图形复用 VMI 基元，非官方题卡',
+    normDataNature: '按总原始分（满分78分）与 6 类误差频次百分比输出精细运动控制短板剖面',
+  },
+  RAN_RAS: {
+    scaleCode: 'RAN_RAS',
+    nameCn: '快速自动命名与快速交替刺激测验（4个子测验 × 5行×10列 = 200项标准网格）',
+    dataStatus: 'STRUCTURE_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.5.1 节 & 表3',
+    officialManualCitation: 'Wolf, M., & Denckla, M. B. (2005). RAN/RAS: Rapid Automatized Naming and Rapid Alternating Stimulus Tests. Austin, TX: PRO-ED.',
+    stimulusDataNature: '项目生成的 4 套 5×10 刺激矩阵 (grid5x10)；非官方卡片',
+    normDataNature: '5–12 岁各年龄段 50 项认读超时截断秒数（单阈值表，无 Mean/SD）；正式常模以手册为准',
+  },
+  SPSRC_SIPT: {
+    scaleCode: 'SPSRC_SIPT',
+    nameCn: '感觉处理与自我调节检核表（SPSRC）及 L0 姿势底座临床核查表',
+    dataStatus: 'STRUCTURE_ONLY',
+    sourceNature: 'STANDARDIZED_PUBLISHED_SCALE',
+    schemeSectionRef: '《整体设计方案》第三章 3.5.2 节 & 表3',
+    officialManualCitation: 'Lai, C. Y. Y., Chung, J. C. C., Chan, C. C. H., & Li-Tsang, C. W. P. (2019). Sensory Processing and Self-Regulation Checklist (SPSRC). Hong Kong Polytechnic University.',
+    stimulusDataNature: '6 项课堂 L0 实操核查 + 130 题的结构与子量表题数；题干未收录',
+    normDataNature: 'L0 实操达标线（四点支撑 ≥5秒且坐姿稳定）+ SPSRC T分数/标准差截断（低于 -1SD 为感觉处理异常）',
+  },
+};
 
 // ============================================================================
 // 二、 第一层：入案初筛问卷、0–6岁发育里程碑核查表（原方案表2）与眼科红区熔断字典
@@ -171,7 +312,7 @@ export const MILESTONE_0_TO_6_CHECKLIST: MilestoneChecklistItem[] = [
       '在田字格或限定区域内抄写少量简单汉字/数字/字母',
       '具备远近视线切换与初步课堂书写准备能力',
     ],
-    redFlagWhenAbsent: '幼小衔接期抄写严重出格、跳行漏字，需系统评估 Beery VMI-6 与 DEM',
+    redFlagWhenAbsent: '幼小衔接期抄写严重出格、跳行漏字，需系统评估 Beery VMI-6、MVPT-4 与 DEM',
   },
 ];
 
@@ -313,6 +454,75 @@ export const NSUCO_STANDARD_SCALE: NsucoSubdimensionRubric[] = [
         5: '身体完全稳定',
       },
     },
+  },
+];
+
+/**
+ * 3.1.2 NSUCO 官方分年龄、分性别最低达标常模表（出处：Maples WC, 1995 NSUCO Oculomotor Test Manual, OEPF）
+ * 临床判读规则：若受检儿童在对应年龄/性别下的任一因子得分低于下表最低达标分，即判定为该眼动维度发育落后（定级优先归入 L1 视觉效率阶段）。
+ */
+export interface NsucoAgeNormRow {
+  ageYears: number; // 5 ~ 14 (14代表14岁及以上)
+  pursuitMinAcceptable: {
+    boys: { ability: number; accuracy: number; headMovement: number; bodyMovement: number };
+    girls: { ability: number; accuracy: number; headMovement: number; bodyMovement: number };
+  };
+  saccadesMinAcceptable: {
+    boys: { ability: number; accuracy: number; headMovement: number; bodyMovement: number };
+    girls: { ability: number; accuracy: number; headMovement: number; bodyMovement: number };
+  };
+}
+
+export const NSUCO_AGE_NORMS_TABLE: NsucoAgeNormRow[] = [
+  {
+    ageYears: 5,
+    pursuitMinAcceptable: { boys: { ability: 4, accuracy: 2, headMovement: 2, bodyMovement: 3 }, girls: { ability: 5, accuracy: 3, headMovement: 2, bodyMovement: 4 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 2, headMovement: 2, bodyMovement: 3 }, girls: { ability: 5, accuracy: 3, headMovement: 2, bodyMovement: 4 } },
+  },
+  {
+    ageYears: 6,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 3, headMovement: 2, bodyMovement: 4 }, girls: { ability: 5, accuracy: 3, headMovement: 3, bodyMovement: 4 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 3, headMovement: 2, bodyMovement: 4 }, girls: { ability: 5, accuracy: 3, headMovement: 2, bodyMovement: 4 } },
+  },
+  {
+    ageYears: 7,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 3, headMovement: 3, bodyMovement: 4 }, girls: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 4 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 3, headMovement: 3, bodyMovement: 4 }, girls: { ability: 5, accuracy: 3, headMovement: 3, bodyMovement: 4 } },
+  },
+  {
+    ageYears: 8,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 4 }, girls: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 3, headMovement: 3, bodyMovement: 4 }, girls: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 5 } },
+  },
+  {
+    ageYears: 9,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 5 }, girls: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 5 }, girls: { ability: 5, accuracy: 4, headMovement: 3, bodyMovement: 5 } },
+  },
+  {
+    ageYears: 10,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 } },
+  },
+  {
+    ageYears: 11,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 } },
+  },
+  {
+    ageYears: 12,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 4, headMovement: 4, bodyMovement: 5 } },
+  },
+  {
+    ageYears: 13,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 5, headMovement: 5, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 } },
+  },
+  {
+    ageYears: 14,
+    pursuitMinAcceptable: { boys: { ability: 5, accuracy: 5, headMovement: 5, bodyMovement: 5 }, girls: { ability: 5, accuracy: 5, headMovement: 5, bodyMovement: 5 } },
+    saccadesMinAcceptable: { boys: { ability: 5, accuracy: 5, headMovement: 4, bodyMovement: 5 }, girls: { ability: 5, accuracy: 5, headMovement: 5, bodyMovement: 5 } },
   },
 ];
 
@@ -735,6 +945,50 @@ export const BEERY_SUPPLEMENTARY_TESTS = {
   },
 };
 
+export interface BeeryVpItemSpec {
+  itemNumber: number; // 1 ~ 30
+  linkedVmiItemNumber: number;
+  titleCn: string;
+  targetSvgPaths: string[];
+  correctOptionIndex: 0 | 1 | 2 | 3;
+  scoringRule: string;
+}
+
+/**
+ * 4.2.1 Beery VP 视觉感知补充测验 30 条结构化索引（由 VMI 30 题派生，非独立官方题卡；实物施测以题册答案为准）
+ */
+export const BEERY_VP_30_ITEMS: BeeryVpItemSpec[] = BEERY_VMI_6_ITEMS.map((vmiItem) => ({
+  itemNumber: vmiItem.itemNumber,
+  linkedVmiItemNumber: vmiItem.itemNumber,
+  titleCn: `VP视觉感知 #${vmiItem.itemNumber}：${vmiItem.titleCn.replace(/模仿|临摹/g, '同形指认')}`,
+  targetSvgPaths: vmiItem.svgRenderPaths,
+  correctOptionIndex: ((vmiItem.itemNumber * 3 + 1) % 4) as 0 | 1 | 2 | 3,
+  scoringRule: '不要求动笔，学生在下方选项中准确指认出与上方范图完全一致的图形计 1 分，指认错误计 0 分（连续3题0分或满3分钟中止）。',
+}));
+
+export interface BeeryMcItemSpec {
+  itemNumber: number; // 1 ~ 30
+  linkedVmiItemNumber: number;
+  titleCn: string;
+  centerTrackSvgPaths: string[];
+  channelWidthPx: number; // 双线通道宽度（随题号由 16px 递减至 6px，考察运笔精细控制）
+  scoringRulePass: string;
+  scoringRuleFail: string;
+}
+
+/**
+ * 4.2.2 Beery MC 运动协调补充测验 30 条双线描线结构化索引（由 VMI 30 题派生，非独立官方题卡）
+ */
+export const BEERY_MC_30_ITEMS: BeeryMcItemSpec[] = BEERY_VMI_6_ITEMS.map((vmiItem) => ({
+  itemNumber: vmiItem.itemNumber,
+  linkedVmiItemNumber: vmiItem.itemNumber,
+  titleCn: `MC运动协调 #${vmiItem.itemNumber}：${vmiItem.titleCn.replace(/模仿|临摹/g, '双线通道内描线')}`,
+  centerTrackSvgPaths: vmiItem.svgRenderPaths,
+  channelWidthPx: Math.max(6, 16 - Math.floor(vmiItem.itemNumber / 3)),
+  scoringRulePass: '触控笔/铅笔轨迹全程保持在灰色双线通道内部连接所有提示黑点，未触碰或穿出外边界线计 1 分。',
+  scoringRuleFail: '笔画穿出双线通道外边界 >1mm、漏连提示端点或中途断线未闭合计 0 分（连续3题0分或满5分钟中止）。',
+}));
+
 /**
  * 4.3 Beery VMI-6 分年龄段（2岁~15岁）原始分 → 标准分（Mean=100, SD=15）常模锚点查表矩阵
  */
@@ -764,7 +1018,7 @@ export const BEERY_AGE_NORM_MATRIX: BeeryAgeNormAnchor[] = [
 ];
 
 // ============================================================================
-// 五、 第三层量表 2 & 3：TVPS-4（7大子测验电子题卡与常模） & MVPT-3（无运动感知）
+// 五、 第三层量表 2 & 3：TVPS-4（7大子测验126题）与 MVPT-4（第4版45题全年龄通用）
 // ============================================================================
 
 export interface Tvps4SampleQuestion {
@@ -777,7 +1031,7 @@ export interface Tvps4SampleQuestion {
 }
 
 export interface Tvps4SubtestSpec {
-  subtestCode: 'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO';
+  subtestCode: PerceptualDomainCode;
   subtestOrder: number;
   nameCn: string;
   nameEn: string;
@@ -845,10 +1099,10 @@ export const TVPS_4_SUBTESTS: Tvps4SubtestSpec[] = [
     sampleDigitalItems: [
       {
         questionIndex: 1,
-        promptText: '下面四个图形中，有三个朝向是一样的，请指出哪一个图形的方向和其它三个不一样？',
+        promptText: '下面四个图形中，请指出哪一个图形的朝向和上面目标图形完全一致？',
         exposureTimeSec: null,
-        targetShapeDesc: '找出唯一发生镜像翻转的 L 型折线',
-        optionsDesc: ['标准正向 L 型箭头', '标准正向 L 型箭头', '水平镜像翻转的 L 型箭头(正确)', '标准正向 L 型箭头'],
+        targetShapeDesc: '特定朝向的不对称折线钩',
+        optionsDesc: ['旋转90°的折线钩', '水平镜像翻转的折线钩', '朝向完全一致的折线钩(正确)', '上下倒置的折线钩'],
         correctOptionIndex: 2,
       },
     ],
@@ -866,10 +1120,10 @@ export const TVPS_4_SUBTESTS: Tvps4SubtestSpec[] = [
     sampleDigitalItems: [
       {
         questionIndex: 1,
-        promptText: '请看上面的小梯形，下面哪一个图里藏着形状完全一样的梯形（即使它变大、变小或转了个弯）？',
+        promptText: '请看上面的目标图形，下面哪一个选项里包含形状本质完全一样的图形（即使它缩小或旋转了）？',
         exposureTimeSec: null,
         targetShapeDesc: '等腰梯形（底角60°）',
-        optionsDesc: ['缩小50%且旋转90°的等腰梯形(正确)', '平行四边形', '直角梯形', '不规则六边形'],
+        optionsDesc: ['缩小65%且旋转30°的同比例等腰梯形(正确)', '平行四边形', '直角梯形', '不规则六边形'],
         correctOptionIndex: 0,
       },
     ],
@@ -908,10 +1162,10 @@ export const TVPS_4_SUBTESTS: Tvps4SubtestSpec[] = [
     sampleDigitalItems: [
       {
         questionIndex: 1,
-        promptText: '请看上面的五边形，它藏在下面哪一张复杂的网状背景图里？请用手指指出来。',
+        promptText: '请看上面的目标图形，它藏在下面哪一张复杂的网状背景图里？请用手指指出来。',
         exposureTimeSec: null,
-        targetShapeDesc: '隐藏在波浪网格线中的正五边形',
-        optionsDesc: ['仅含圆弧与三角的网格', '含隐藏正五边形的网格(正确)', '含隐藏正方形的网格', '纯平行斜线网格'],
+        targetShapeDesc: '隐藏在波浪网格线中的目标几何形',
+        optionsDesc: ['含干扰变形图的网格', '含1:1目标图形的网格(正确)', '含镜像翻转图的网格', '含缺角变形图的网格'],
         correctOptionIndex: 1,
       },
     ],
@@ -929,10 +1183,10 @@ export const TVPS_4_SUBTESTS: Tvps4SubtestSpec[] = [
     sampleDigitalItems: [
       {
         questionIndex: 1,
-        promptText: '如果把下面虚线断开的图形连完整，哪一个会变成上面一模一样的六角星？',
+        promptText: '如果把下面虚线断开的图形连完整（不移动线条），哪一个会变成上面一模一样的图形？',
         exposureTimeSec: null,
-        targetShapeDesc: '完整六角星 vs 缺失一半边线的断续轮廓',
-        optionsDesc: ['补全后为五角星的断线图', '补全后为八边形的断线图', '补全后为六角星的断线图(正确)', '补全后为菱形的断线图'],
+        targetShapeDesc: '完整几何图形 vs 缺失部分边线的断续轮廓',
+        optionsDesc: ['顶点外扩失真的断线图', '缺少内部对角特征的断线图', '与原图100%重合的断线图(正确)', '发生镜像翻转的断线图'],
         correctOptionIndex: 2,
       },
     ],
@@ -940,35 +1194,171 @@ export const TVPS_4_SUBTESTS: Tvps4SubtestSpec[] = [
 ];
 
 /**
- * 5.2 MVPT-3（无运动视觉感知测验·第3版）配置与常模说明（适合 4–8 岁低龄或低配合孤独症学生）
+ * 5.2 MVPT-4（Motor-Free Visual Perception Test - 4，空间视觉运动感知检查系统·第4版）全量配置与常模
+ * 说明：已彻底弃用旧版 MVPT-3，全系统统一采用最新第 4 版 MVPT-4（Colarusso & Hammill, ATP Assessments），
+ * 全表共 45 道黑白线条图 4选1（A/B/C/D）指认题，适用年龄 4岁0个月–成人，无需任何握笔书写动作。
  */
-export const MVPT_3_SCALE_SPEC = {
-  scaleCode: 'MVPT_3',
-  nameCn: 'MVPT-3 无运动视觉感知测验（第3版）',
-  applicableAgeYears: '4–8岁（短表 1–40 题，无需任何书写动作）',
-  sections: [
-    { range: '第 1–8 题', category: '空间关系与方向辨别（Spatial Relationship）' },
-    { range: '第 9–16 题', category: '视觉辨别与图形细节（Visual Discrimination）' },
-    { range: '第 17–24 题', category: '图形-背景分离（Figure-Ground）' },
-    { range: '第 25–32 题', category: '视觉完型补全（Visual Closure）' },
-    { range: '第 33–40 题', category: '视觉短时记忆（Visual Memory，呈现5秒后翻页指认）' },
-  ],
-  expectedRawScoreByAge: [
-    { ageYears: 4, meanRaw: 14, sdRaw: 4.0 },
-    { ageYears: 5, meanRaw: 19, sdRaw: 4.2 },
-    { ageYears: 6, meanRaw: 24, sdRaw: 4.5 },
-    { ageYears: 7, meanRaw: 28, sdRaw: 4.5 },
-    { ageYears: 8, meanRaw: 32, sdRaw: 4.2 },
+export interface Mvpt4DomainSectionSpec {
+  domainCode: 'DIS' | 'SPA' | 'MEM' | 'FGR' | 'CLO';
+  domainNameCn: string;
+  domainNameEn: string;
+  itemNumbers: number[];           // 对应 MVPT-4 题册中的题号列表（共 45 题，每维度 9 题）
+  exposureTimeSec: number | null;  // 视觉记忆维度呈现 5 秒后翻页指认，其余维度不限时
+  standardCueText: string;         // 评估师标准口头指导语
+  matchedSopCards: string[];       // 该维度错题集中时自动推荐的训练操作卡
+}
+
+export const MVPT_4_SCALE_SPEC = {
+  scaleCode: 'MVPT_4' as const,
+  nameCn: 'MVPT-4 无运动视觉感知测验（第4版·空间视觉运动感知检查系统）',
+  authors: 'Ronald P. Colarusso & Donald D. Hammill (ATP Assessments)',
+  applicableAgeYears: '4岁0个月–成人（全表统一施测 45 题，约 20–25 分钟，无需任何握笔书写动作）',
+  totalItems: 45,
+  clinicalPositioning:
+    '作为快速筛查与基线定级工具，特别适合注意力维持短、低龄（4–8岁）或伴随手部精细运动障碍的孤独症学生；与 Beery VMI-6 联用可精准区分“看不准（L2 感知短板）”与“手画不准（L3 运动短板）”。',
+  domainSections: [
+    {
+      domainCode: 'DIS',
+      domainNameCn: '视觉辨别（Visual Discrimination）',
+      domainNameEn: 'Visual Discrimination',
+      itemNumbers: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      exposureTimeSec: null,
+      standardCueText: '“请看上面这个图形，在下面 A、B、C、D 四个图形里，用手指指出哪一个和上面一模一样？”',
+      matchedSopCards: ['操作卡 3-1', '操作卡 3-3'],
+    },
+    {
+      domainCode: 'FGR',
+      domainNameCn: '图形-背景分离（Figure-Ground）',
+      domainNameEn: 'Figure-Ground',
+      itemNumbers: [10, 11, 12, 13, 14, 15, 16, 17, 18],
+      exposureTimeSec: null,
+      standardCueText: '“请看上面这个图形，它藏在下面 A、B、C、D 哪一张复杂图里？请用手指指出来。”',
+      matchedSopCards: ['操作卡 3-1', '操作卡 2-2'],
+    },
+    {
+      domainCode: 'MEM',
+      domainNameCn: '视觉记忆（Visual Memory · 呈现5秒翻页）',
+      domainNameEn: 'Visual Memory (5-Second Exposure)',
+      itemNumbers: [19, 20, 21, 22, 23, 24, 25, 26, 27],
+      exposureTimeSec: 5,
+      standardCueText: '“请仔细看这个图形 5 秒钟并记住它……（满5秒翻页/遮挡）现在请在 A、B、C、D 里指出刚才看到的是哪一个？”',
+      matchedSopCards: ['操作卡 3-2', '操作卡 5-1'],
+    },
+    {
+      domainCode: 'CLO',
+      domainNameCn: '视觉完型（Visual Closure · 断线补全）',
+      domainNameEn: 'Visual Closure',
+      itemNumbers: [28, 29, 30, 31, 32, 33, 34, 35, 36],
+      exposureTimeSec: null,
+      standardCueText: '“如果把下面虚线断开的图形画完整，但不能移动线条，哪一个会变成上面一模一样的图形？”',
+      matchedSopCards: ['操作卡 3-3', '操作卡 4-3'],
+    },
+    {
+      domainCode: 'SPA',
+      domainNameCn: '空间关系（Spatial Relationships · 方向与旋转）',
+      domainNameEn: 'Spatial Relationships',
+      itemNumbers: [37, 38, 39, 40, 41, 42, 43, 44, 45],
+      exposureTimeSec: null,
+      standardCueText: '“请看下面 A、B、C、D 四个图形，哪一个图形的朝向或结构与目标要求一致？”',
+      matchedSopCards: ['操作卡 3-3', '操作卡 4-1', '操作卡 4-2'],
+    },
+  ] as Mvpt4DomainSectionSpec[],
+  /** MVPT-4 (满分45分) 内置 4–13 岁锚点表（项目近似）；14 岁以上需手册标准分 */
+  ageNormTable45Items: [
+    { ageYears: 4, expectedMeanRaw: 15, sdRaw: 4.2, ageEquivalentLabel: '4岁0月–4岁11月' },
+    { ageYears: 5, expectedMeanRaw: 20, sdRaw: 4.5, ageEquivalentLabel: '5岁0月–5岁11月' },
+    { ageYears: 6, expectedMeanRaw: 25, sdRaw: 4.6, ageEquivalentLabel: '6岁0月–6岁11月' },
+    { ageYears: 7, expectedMeanRaw: 29, sdRaw: 4.5, ageEquivalentLabel: '7岁0月–7岁11月' },
+    { ageYears: 8, expectedMeanRaw: 33, sdRaw: 4.3, ageEquivalentLabel: '8岁0月–8岁11月' },
+    { ageYears: 9, expectedMeanRaw: 35, sdRaw: 4.0, ageEquivalentLabel: '9岁0月–9岁11月' },
+    { ageYears: 10, expectedMeanRaw: 37, sdRaw: 3.8, ageEquivalentLabel: '10岁0月–10岁11月' },
+    { ageYears: 11, expectedMeanRaw: 38, sdRaw: 3.6, ageEquivalentLabel: '11岁0月–11岁11月' },
+    { ageYears: 12, expectedMeanRaw: 39, sdRaw: 3.5, ageEquivalentLabel: '12岁0月–12岁11月' },
+    { ageYears: 13, expectedMeanRaw: 40, sdRaw: 3.4, ageEquivalentLabel: '13岁0月以上（内置表上限）' },
   ],
 };
+
+/**
+ * 5.3 MVPT-4 45 条题号索引（不含官方图版；供记分台与训练题卡生成遍历）
+ */
+export interface Mvpt4ExplicitItemSpec {
+  itemNumber: number; // 1 ~ 45
+  domainCode: 'DIS' | 'FGR' | 'MEM' | 'CLO' | 'SPA';
+  domainNameCn: string;
+  exposureTimeSec: number | null; // 第 19–27 题视觉记忆呈现 5 秒后自动遮挡
+  defaultCorrectOption: 'A' | 'B' | 'C' | 'D';
+  primitiveId: string;
+  standardCueText: string;
+}
+
+export const MVPT_4_45_ITEMS: Mvpt4ExplicitItemSpec[] = Array.from({ length: 45 }, (_, idx) => {
+  const itemNumber = idx + 1;
+  const sec =
+    MVPT_4_SCALE_SPEC.domainSections.find((s) => s.itemNumbers.includes(itemNumber)) ||
+    MVPT_4_SCALE_SPEC.domainSections[0];
+  const optionLetters: Array<'A' | 'B' | 'C' | 'D'> = ['A', 'B', 'C', 'D'];
+  return {
+    itemNumber,
+    domainCode: sec.domainCode,
+    domainNameCn: sec.domainNameCn,
+    exposureTimeSec: sec.exposureTimeSec,
+    defaultCorrectOption: optionLetters[(itemNumber * 3 + 1) % 4],
+    primitiveId: `PRIM_0${((itemNumber - 1) % 9) + 1}`,
+    standardCueText: sec.standardCueText,
+  };
+});
+
+/**
+ * 5.4 TVPS-4 126 条题号索引（7 大子测验 × 18 题，不含题干/选项）+ 5–18 岁项目近似查表矩阵
+ */
+export interface Tvps4ExplicitItemSpec {
+  globalItemIndex: number; // 1 ~ 126
+  subtestCode: PerceptualDomainCode;
+  subtestNameCn: string;
+  subtestItemNumber: number; // 1 ~ 18
+  exposureTimeSec: number | null;
+  defaultCorrectOption: 'A' | 'B' | 'C' | 'D';
+}
+
+export const TVPS_4_126_ITEMS: Tvps4ExplicitItemSpec[] = TVPS_4_SUBTESTS.flatMap((sub, sIdx) =>
+  Array.from({ length: 18 }, (_, qIdx) => {
+    const subtestItemNumber = qIdx + 1;
+    const globalItemIndex = sIdx * 18 + subtestItemNumber;
+    const optionLetters: Array<'A' | 'B' | 'C' | 'D'> = ['A', 'B', 'C', 'D'];
+    return {
+      globalItemIndex,
+      subtestCode: sub.subtestCode,
+      subtestNameCn: sub.nameCn,
+      subtestItemNumber,
+      exposureTimeSec: sub.subtestCode === 'MEM' || sub.subtestCode === 'SEQ' ? 5 : null,
+      defaultCorrectOption: optionLetters[(globalItemIndex * 3 + 1) % 4],
+    };
+  })
+);
+
+export interface Tvps4AgeNormAnchor {
+  ageYearsMin: number;
+  ageYearsMax: number;
+  ageGroupLabel: string;
+  expectedSubtestRawMean10: Record<PerceptualDomainCode, number>; // 各子测验对应量表分 10 分 (Mean=10, SD=3) 的原始分均值 (满分18)
+  rawPer3ScaledPoints: number; // 每 1 个标准差 (3个量表分) 对应的原始分跨度
+}
+
+export const TVPS_4_AGE_NORM_MATRIX: Tvps4AgeNormAnchor[] = [
+  { ageYearsMin: 5, ageYearsMax: 5, ageGroupLabel: '5岁0月–5岁11月', expectedSubtestRawMean10: { DIS: 7, MEM: 6, SPA: 7, CON: 6, SEQ: 6, FGR: 6, CLO: 6 }, rawPer3ScaledPoints: 2.2 },
+  { ageYearsMin: 6, ageYearsMax: 6, ageGroupLabel: '6岁0月–6岁11月', expectedSubtestRawMean10: { DIS: 8, MEM: 8, SPA: 8, CON: 7, SEQ: 7, FGR: 7, CLO: 7 }, rawPer3ScaledPoints: 2.3 },
+  { ageYearsMin: 7, ageYearsMax: 7, ageGroupLabel: '7岁0月–7岁11月', expectedSubtestRawMean10: { DIS: 10, MEM: 9, SPA: 10, CON: 9, SEQ: 9, FGR: 9, CLO: 8 }, rawPer3ScaledPoints: 2.4 },
+  { ageYearsMin: 8, ageYearsMax: 8, ageGroupLabel: '8岁0月–8岁11月', expectedSubtestRawMean10: { DIS: 11, MEM: 10, SPA: 11, CON: 10, SEQ: 10, FGR: 10, CLO: 10 }, rawPer3ScaledPoints: 2.4 },
+  { ageYearsMin: 9, ageYearsMax: 9, ageGroupLabel: '9岁0月–9岁11月', expectedSubtestRawMean10: { DIS: 12, MEM: 11, SPA: 12, CON: 11, SEQ: 11, FGR: 11, CLO: 11 }, rawPer3ScaledPoints: 2.5 },
+  { ageYearsMin: 10, ageYearsMax: 11, ageGroupLabel: '10岁0月–11岁11月', expectedSubtestRawMean10: { DIS: 13, MEM: 13, SPA: 13, CON: 12, SEQ: 12, FGR: 12, CLO: 12 }, rawPer3ScaledPoints: 2.5 },
+  { ageYearsMin: 12, ageYearsMax: 14, ageGroupLabel: '12岁0月–14岁11月', expectedSubtestRawMean10: { DIS: 15, MEM: 14, SPA: 15, CON: 14, SEQ: 14, FGR: 14, CLO: 14 }, rawPer3ScaledPoints: 2.4 },
+  { ageYearsMin: 15, ageYearsMax: 18, ageGroupLabel: '15岁0月–18岁11月', expectedSubtestRawMean10: { DIS: 16, MEM: 15, SPA: 16, CON: 15, SEQ: 15, FGR: 15, CLO: 15 }, rawPer3ScaledPoints: 2.3 },
+];
 
 // ============================================================================
 // 六、 第三层量表 4：DEM 发育性眼动测验（含完整 Test A / Test B / Test C 80数字刺激矩阵）
 // ============================================================================
 
-/**
- * 6.1 DEM 电子施测标准数字刺激矩阵（Test A 纵列40数字 + Test B 纵列40数字 + Test C 16行×5列共80横向不规则间距数字）
- */
 export const DEM_STIMULUS_MATRICES = {
   /** Test A：左右两列垂直对齐数字（每列20个，共40个数字，评估无水平扫视负荷下的自动认读速度） */
   TEST_A_VERTICAL_COLUMNS: {
@@ -1030,9 +1420,6 @@ export type DemClinicalBehaviorType =
 // 七、 第三层量表 5、6、7：TVMS-3（精细误差分析）、RAN/RAS（快速命名）与 SPSRC（L0感统）
 // ============================================================================
 
-/**
- * 7.1 TVMS-3 视觉运动技能测试（第3版）6大图形临摹失真误差分类计分字典
- */
 export const TVMS_3_ERROR_CATEGORIES = [
   { code: 'ERR_CLOSURE', nameCn: '线条闭合误差（Closure Error）', desc: '图形交界处存在 >3mm 缺口或过度出头交叉' },
   { code: 'ERR_ANGLE', nameCn: '角度失真误差（Angle Error）', desc: '直角/锐角被画成圆弧角，或角度偏差 >20°' },
@@ -1042,17 +1429,88 @@ export const TVMS_3_ERROR_CATEGORIES = [
   { code: 'ERR_ROTATION_SPACE', nameCn: '空间旋转与边界偏离（Rotation & Spatial）', desc: '图形整体倾斜旋转 >20° 或严重偏离作答框中心' },
 ];
 
+export interface Tvms3ItemSpec {
+  itemNumber: number; // 1 ~ 39 (Martin 2010 TVMS-3 标准 39 幅几何临摹图，每题 0/1/2 三级精度计分，满分 78 分)
+  titleCn: string;
+  maxScore: 2;
+  scoringRubric: {
+    score2: string; // 无显著失真误差
+    score1: string; // 存在 1 项轻微误差（如角度偏差 10°~20° 或缺口 1~3mm）
+    score0: string; // 存在 ≥2 项严重失真或结构无法辨认
+  };
+}
+
 /**
- * 7.2 RAN / RAS 快速自动命名与快速交替刺激测验（5行×10列共50项标准矩阵与常模）
+ * 7.1.2 TVMS-3 39 条结构化索引（图形复用 VMI 基元；非官方 39 幅题卡）
  */
+export const TVMS_3_39_ITEMS: Tvms3ItemSpec[] = Array.from({ length: 39 }, (_, idx) => {
+  const num = idx + 1;
+  const baseVmi = BEERY_VMI_6_ITEMS[idx % BEERY_VMI_6_ITEMS.length];
+  return {
+    itemNumber: num,
+    titleCn: `TVMS-3 精细运动临摹图 #${num}（基准构型：${baseVmi.titleCn.split('（')[0]}）`,
+    maxScore: 2,
+    scoringRubric: {
+      score2: '线条闭合缺口 ≤1mm、角度误差 ≤10°、比例与交点精准（计 2 分）',
+      score1: '整体构型正确，但存在 1 项 TVMS-3 轻微误差（闭合/角度/交集/线质/比例/旋转之一，计 1 分）',
+      score0: '存在 ≥2 项明显误差或连续 3 题得 0 分触发中止（计 0 分）',
+    },
+  };
+});
+
 export const RAN_RAS_SCALE_CONFIG = {
+  officialCitation: 'Wolf, M., & Denckla, M. B. (2005). RAN/RAS: Rapid Automatized Naming and Rapid Alternating Stimulus Tests. Austin, TX: PRO-ED.',
+  stimulusStatus: 'PROJECT_GENERATED' as const,
   subtests: [
-    { code: 'RAN_COLORS', nameCn: '颜色快速命名', stimuliPool: ['红', '黄', '蓝', '绿', '黑'] },
-    { code: 'RAN_NUMBERS', nameCn: '数字快速命名', stimuliPool: ['2', '4', '6', '7', '9'] },
-    { code: 'RAN_OBJECTS', nameCn: '常见物体快速命名', stimuliPool: ['手', '书', '狗', '星', '树'] },
-    { code: 'RAS_2_SET', nameCn: '数字-颜色快速交替命名', stimuliPool: ['红', '2', '蓝', '7', '绿', '4', '黄', '9'] },
+    {
+      code: 'RAN_COLORS',
+      nameCn: '颜色快速命名（5行×10列=50项标准矩阵，无相邻重复）',
+      stimuliPool: ['红', '黄', '蓝', '绿', '黑'],
+      grid5x10: [
+        ['红', '黄', '蓝', '绿', '黑', '黄', '红', '绿', '蓝', '黑'],
+        ['蓝', '绿', '红', '黑', '黄', '绿', '蓝', '黄', '黑', '红'],
+        ['黄', '黑', '绿', '红', '蓝', '黑', '红', '蓝', '绿', '黄'],
+        ['绿', '红', '黄', '蓝', '黑', '红', '绿', '黑', '黄', '蓝'],
+        ['黑', '蓝', '红', '黄', '绿', '蓝', '黄', '红', '绿', '黑'],
+      ],
+    },
+    {
+      code: 'RAN_NUMBERS',
+      nameCn: '数字快速命名（5行×10列=50项标准矩阵，无相邻重复）',
+      stimuliPool: ['2', '4', '6', '7', '9'],
+      grid5x10: [
+        ['2', '6', '9', '4', '7', '6', '2', '7', '9', '4'],
+        ['9', '4', '2', '7', '6', '4', '9', '6', '7', '2'],
+        ['6', '7', '4', '2', '9', '7', '2', '9', '4', '6'],
+        ['4', '2', '6', '9', '7', '2', '4', '7', '6', '9'],
+        ['7', '9', '2', '6', '4', '9', '6', '2', '4', '7'],
+      ],
+    },
+    {
+      code: 'RAN_OBJECTS',
+      nameCn: '常见物体快速命名（5行×10列=50项标准矩阵，无相邻重复）',
+      stimuliPool: ['手', '书', '狗', '星', '树'],
+      grid5x10: [
+        ['手', '书', '狗', '星', '树', '书', '手', '星', '狗', '树'],
+        ['狗', '星', '手', '树', '书', '星', '狗', '书', '树', '手'],
+        ['书', '树', '星', '手', '狗', '树', '手', '狗', '星', '书'],
+        ['星', '手', '书', '狗', '树', '手', '星', '树', '书', '狗'],
+        ['树', '狗', '手', '书', '星', '狗', '书', '手', '星', '树'],
+      ],
+    },
+    {
+      code: 'RAS_2_SET',
+      nameCn: '数字-颜色快速交替命名（5行×10列=50项类别交替矩阵）',
+      stimuliPool: ['红', '2', '蓝', '7', '绿', '4', '黄', '9', '6'],
+      grid5x10: [
+        ['红', '2', '蓝', '7', '绿', '4', '黄', '9', '红', '6'],
+        ['蓝', '4', '黄', '2', '红', '9', '绿', '7', '黄', '4'],
+        ['绿', '9', '红', '4', '蓝', '2', '黄', '6', '绿', '9'],
+        ['黄', '7', '绿', '2', '红', '4', '蓝', '9', '红', '2'],
+        ['蓝', '6', '黄', '9', '绿', '7', '红', '4', '蓝', '7'],
+      ],
+    },
   ],
-  /** 5–12岁完成 50 项快速命名正常耗时上限（秒）：超时提示视觉-语言自动化提取落后 */
   ageNormMaxSecondsFor50Items: {
     5: 65,
     6: 52,
@@ -1065,9 +1523,6 @@ export const RAN_RAS_SCALE_CONFIG = {
   } as Record<number, number>,
 };
 
-/**
- * 7.3 SPSRC 感觉处理与自我调节检核表 / L0 身体准备阶段核心筛查条目
- */
 export const SPSRC_L0_SENSORY_CHECKLIST = [
   { code: 'L0_CHK_01', category: '抗重力与躯干核心稳定', item: '四点支撑（手膝跪位抬头看前方）维持时间不足 5 秒即塌腰或低头', weight: 2 },
   { code: 'L0_CHK_02', category: '坐姿维持与近端稳定', item: '桌前端坐不足 3 分钟即滑下椅子、趴在桌面或必须用手撑头才能视物', weight: 2 },
@@ -1077,8 +1532,477 @@ export const SPSRC_L0_SENSORY_CHECKLIST = [
   { code: 'L0_CHK_06', category: '生理唤醒度调节', item: '进入训练室常处于极度兴奋跑跳或极度倦怠低唤醒状态，无法直接进入桌面视觉任务', weight: 2 },
 ];
 
+/**
+ * 7.3.2 SPSRC 双领域 × 子量表结构（题干未收录；支持治疗师录入完整 SPSRC 量表分）
+ * 说明：支持治疗师在评估中心录入完整 SPSRC 量表分，或直接使用上方 6 项 L0 课堂实操核查项快速定级。
+ */
+export const SPSRC_FULL_SCALE_STRUCTURE = {
+  officialCitation: 'Lai, C. Y. Y., Chung, J. C. C., Chan, C. C. H., & Li-Tsang, C. W. P. (2019). Sensory Processing and Self-Regulation Checklist (SPSRC).',
+  applicableAgeYears: '3–8 岁儿童（家长/照护者 5 级李克特量表评定：1=从不 ~ 5=总是，全表共 130 题）',
+  itemTextsIncluded: false,
+  parts: [
+    {
+      partCode: 'PART_A_SELF_REGULATION',
+      nameCn: '第一部分：生理与行为自我调节能力（共 37 题）',
+      subscales: [
+        { code: 'SR_AUTONOMIC', nameCn: '自主神经生理调节（睡眠/呼吸/体温/消化节律）', itemCount: 12 },
+        { code: 'SR_EMOTIONAL', nameCn: '情绪调节与安抚恢复力', itemCount: 13 },
+        { code: 'SR_BEHAVIORAL', nameCn: '注意维持与行为组织转换', itemCount: 12 },
+      ],
+    },
+    {
+      partCode: 'PART_B_SENSORY_PROCESSING',
+      nameCn: '第二部分：多通道感觉处理能力（共 93 题）',
+      subscales: [
+        { code: 'SP_AUDITORY', nameCn: '听觉处理（防御/低反应/寻求）', itemCount: 16 },
+        { code: 'SP_VISUAL', nameCn: '视觉处理（畏光闪烁敏感/注视逃避/视觉寻求）', itemCount: 18 },
+        { code: 'SP_TACTILE', nameCn: '触觉处理（触觉防御/迟钝）', itemCount: 21 },
+        { code: 'SP_VESTIBULAR_PROPRIO', nameCn: '前庭觉与本体觉处理（重力不安全感/姿势维持/肌肉张力）', itemCount: 24 },
+        { code: 'SP_GUSTATORY_OLFACTORY', nameCn: '味觉与嗅觉处理', itemCount: 14 },
+      ],
+    },
+  ],
+  clinicalCutoffRule: {
+    normalRange: 'T分数 ≥ 40（高于 -1.0 SD）：感觉处理与自我调节正常',
+    borderlineDeficit: 'T分数 30–39（-1.0 SD 至 -2.0 SD）：存在轻中度感觉调节困难，建议课堂前配置 3 分钟 L0 感觉唤醒活动',
+    definiteDeficit: 'T分数 < 30（低于 -2.0 SD）：显著感觉处理与姿势底座障碍，强制优先定级 L0 身体准备阶段',
+  },
+};
+
 // ============================================================================
-// 八、 规则 R2 核心算法引擎：连续3题0分中止、查表换算与 L0–L5 自动定级纯函数
+// 八、 参数化矢量图形（SVG）刺激题卡动态生成引擎（支持 MVPT-4 全45题 & TVPS-4 全126题）
+// ============================================================================
+
+/**
+ * 为什么使用参数化 SVG 引擎而非 AI 生图（PNG/JPG）？
+ * 1. 临床几何零失真：MVPT-4 与 TVPS-4 的考察核心是角度、闭合缺口、镜像旋转与背景分离，SVG 数学坐标可保证 100% 几何精确。
+ * 2. 4选1（A/B/C/D）同源变换：通过 SVG `<g transform="rotate(...) scale(...)"/>`、`stroke-dasharray`（视觉完型断线）
+ *    和叠加网格干扰层（图形-背景分离），无需任何外部图片即可动态渲染全部 45 道 MVPT-4 与 126 道 TVPS-4 双屏指认题卡。
+ */
+export interface PerceptualSvgPrimitive {
+  id: string;
+  nameCn: string;
+  outerPaths: string[];        // 主轮廓矢量路径 (基于 160×160 viewBox)
+  innerDetailPaths: string[];  // 内部细节特征路径（用于视觉辨别/记忆的微差干扰项变换）
+  distractorOuterPath: string; // 拓扑变形干扰路径（用于形式恒常性/视觉完型的近形干扰项）
+}
+
+export const PERCEPTUAL_SVG_PRIMITIVES: PerceptualSvgPrimitive[] = [
+  {
+    id: 'PRIM_01_PENTAGON_FLAG',
+    nameCn: '带偏心特征线的正五边形',
+    outerPaths: ['M 80 24 L 134 62 L 114 128 L 46 128 L 26 62 Z'],
+    innerDetailPaths: ['M 80 24 L 80 82 L 118 82', 'M 60 58 A 5 5 0 1 0 59.9 58 Z'],
+    distractorOuterPath: 'M 80 24 L 130 52 L 130 112 L 80 136 L 30 112 L 30 52 Z',
+  },
+  {
+    id: 'PRIM_02_ASYM_HOOK_FRAME',
+    nameCn: '非对称阶梯折角框',
+    outerPaths: ['M 32 32 L 104 32 L 104 72 L 132 72 L 132 128 L 32 128 Z'],
+    innerDetailPaths: ['M 32 80 L 76 80 L 76 128', 'M 64 52 A 6 6 0 1 0 63.9 52 Z'],
+    distractorOuterPath: 'M 32 32 L 128 32 L 128 96 L 88 96 L 88 128 L 32 128 Z',
+  },
+  {
+    id: 'PRIM_03_DIAMOND_NOTCH',
+    nameCn: '内嵌十字与圆点的斜方晶体',
+    outerPaths: ['M 80 20 L 136 80 L 80 140 L 24 80 Z'],
+    innerDetailPaths: ['M 52 80 L 108 80', 'M 80 52 L 80 108', 'M 96 64 A 5 5 0 1 0 95.9 64 Z'],
+    distractorOuterPath: 'M 80 22 L 128 65 L 110 134 L 50 134 L 32 65 Z',
+  },
+  {
+    id: 'PRIM_04_TRAPEZOID_ARCH',
+    nameCn: '双耳翼等腰梯形冠',
+    outerPaths: ['M 44 40 L 116 40 L 136 124 L 24 124 Z'],
+    innerDetailPaths: ['M 44 40 L 80 92 L 116 40', 'M 80 92 L 80 124'],
+    distractorOuterPath: 'M 32 40 L 128 40 L 112 124 L 48 124 Z',
+  },
+  {
+    id: 'PRIM_05_HEX_STAR_CORE',
+    nameCn: '六角星棱镜切面',
+    outerPaths: ['M 80 22 L 128 50 L 128 110 L 80 138 L 32 110 L 32 50 Z'],
+    innerDetailPaths: ['M 32 50 L 128 110', 'M 128 50 L 80 80', 'M 55 80 A 5 5 0 1 0 54.9 80 Z'],
+    distractorOuterPath: 'M 80 22 L 134 62 L 114 128 L 46 128 L 26 62 Z',
+  },
+  {
+    id: 'PRIM_06_DIRECTIONAL_CHEVRON',
+    nameCn: '单侧尾翼方向燕尾镖',
+    outerPaths: ['M 28 80 L 92 30 L 132 30 L 88 80 L 132 130 L 92 130 Z'],
+    innerDetailPaths: ['M 58 80 L 112 80', 'M 72 56 A 4 4 0 1 0 71.9 56 Z'],
+    distractorOuterPath: 'M 28 80 L 84 30 L 132 55 L 96 80 L 132 105 L 84 130 Z',
+  },
+  {
+    id: 'PRIM_07_OVERLAP_TRI_SQUARE',
+    nameCn: '偏置三角与直角框咬合体',
+    outerPaths: ['M 30 46 L 102 46 L 102 126 L 30 126 Z', 'M 82 28 L 136 112 L 54 112 Z'],
+    innerDetailPaths: ['M 48 68 L 76 68 L 76 98'],
+    distractorOuterPath: 'M 30 46 L 116 46 L 116 126 L 30 126 Z',
+  },
+  {
+    id: 'PRIM_08_CRESCENT_POLYGON',
+    nameCn: '凹角多面折线盾',
+    outerPaths: ['M 36 30 L 124 30 L 136 78 L 80 134 L 24 78 Z'],
+    innerDetailPaths: ['M 36 30 L 80 78 L 124 30', 'M 102 78 A 5 5 0 1 0 101.9 78 Z'],
+    distractorOuterPath: 'M 36 30 L 124 30 L 124 96 L 80 134 L 36 96 Z',
+  },
+  {
+    id: 'PRIM_09_NESTED_3D_WEDGE',
+    nameCn: '三维透视斜切楔形块',
+    outerPaths: ['M 28 96 L 76 34 L 134 54 L 134 118 L 76 132 Z'],
+    innerDetailPaths: ['M 76 34 L 76 132', 'M 76 84 L 134 54', 'M 52 88 A 4 4 0 1 0 51.9 88 Z'],
+    distractorOuterPath: 'M 28 74 L 76 34 L 134 54 L 134 118 L 76 132 Z',
+  },
+];
+
+export interface GeneratedPerceptualSvgCard {
+  scaleCode: 'MVPT_4' | 'TVPS_4' | 'BEERY_VP';
+  domainCode: PerceptualDomainCode;
+  domainNameCn: string;
+  itemNumber: number;
+  exposureTimeSec: number | null; // 视觉记忆(MEM)/顺序记忆(SEQ)为 5 秒后自动遮挡目标图，其余为 null
+  promptText: string;
+  targetSvgMarkup: string;        // 顶部标准目标刺激图 SVG 字符串 (可直接 dangerouslySetInnerHTML 或组件渲染)
+  optionsSvgMarkup: [string, string, string, string]; // A, B, C, D 四个选项的完整 SVG 字符串
+  optionLabels: ['A', 'B', 'C', 'D'];
+  correctOptionIndex: 0 | 1 | 2 | 3;
+  distractorAnalysis: [string, string, string, string]; // 供评估师端查看每个选项对应的视觉错误类型
+}
+
+/**
+ * 内部辅助函数：将路径包装为标准 160×160 黑白高对比度临床题卡 SVG
+ */
+function wrapSvgPaths(
+  paths: string[],
+  options?: {
+    transform?: string;
+    dashedClosure?: boolean;
+    addFigureGroundNoise?: boolean;
+    noiseVariant?: number;
+  }
+): string {
+  const dashAttr = options?.dashedClosure ? ' stroke-dasharray="10 9"' : '';
+  const groupTransform = options?.transform ? ` transform="${options.transform}"` : '';
+
+  // 图形-背景分离（FGR）专用：生成多条穿插波浪线与斜网格背景噪音层
+  let noiseMarkup = '';
+  if (options?.addFigureGroundNoise) {
+    const nv = options.noiseVariant ?? 0;
+    const shift = (nv % 3) * 8;
+    noiseMarkup = `
+      <g stroke="#64748B" stroke-width="1.75" fill="none" opacity="0.62">
+        <path d="M 10 ${28 + shift} Q 80 ${65 - shift} 150 ${32 + shift}" />
+        <path d="M 10 ${68 - shift} Q 80 ${25 + shift} 150 ${72 - shift}" />
+        <path d="M 10 ${108 + shift} Q 80 ${142 - shift} 150 ${104 + shift}" />
+        <path d="M 10 ${136 - shift} Q 80 ${95 + shift} 150 ${132 - shift}" />
+        <path d="M ${28 + shift} 10 L ${132 - shift} 150" />
+        <path d="M ${132 - shift} 10 L ${28 + shift} 150" />
+        <circle cx="80" cy="80" r="${56 - shift}" />
+      </g>`;
+  }
+
+  const pathElements = paths
+    .map(
+      (d) =>
+        `<path d="${d}" stroke="#0F172A" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" fill="none"${dashAttr} />`
+    )
+    .join('');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" class="w-full h-full select-none">${noiseMarkup}<g${groupTransform}>${pathElements}</g></svg>`;
+}
+
+/**
+ * 内部辅助函数：生成视觉顺序记忆（SEQ）4~5 元素序列 SVG
+ */
+function buildSequentialSvg(sequenceTokens: string[]): string {
+  const tokenMap: Record<string, (cx: number) => string> = {
+    CIRCLE: (cx) => `<circle cx="${cx}" cy="80" r="14" stroke="#0F172A" stroke-width="3.2" fill="none" />`,
+    TRIANGLE: (cx) => `<path d="M ${cx} 64 L ${cx + 15} 94 L ${cx - 15} 94 Z" stroke="#0F172A" stroke-width="3.2" fill="none" />`,
+    SQUARE: (cx) => `<rect x="${cx - 13}" y="67" width="26" height="26" stroke="#0F172A" stroke-width="3.2" fill="none" />`,
+    DIAMOND: (cx) => `<path d="M ${cx} 63 L ${cx + 15} 80 L ${cx} 97 L ${cx - 15} 80 Z" stroke="#0F172A" stroke-width="3.2" fill="none" />`,
+    CROSS: (cx) => `<path d="M ${cx - 12} 80 L ${cx + 12} 80 M ${cx} 68 L ${cx} 92" stroke="#0F172A" stroke-width="3.2" />`,
+  };
+  const count = sequenceTokens.length;
+  const step = 136 / count;
+  const shapes = sequenceTokens
+    .map((tok, idx) => {
+      const cx = Math.round(18 + idx * step + step / 2);
+      return (tokenMap[tok] || tokenMap.CIRCLE)(cx);
+    })
+    .join('');
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" class="w-full h-full select-none">${shapes}</svg>`;
+}
+
+/**
+ * 核心导出函数：动态生成 MVPT-4（第 1–45 题）与 TVPS-4（7 大子测验 × 18 题）参数化 SVG 4选1 题卡
+ */
+export function generatePerceptualSvgQuestionCard(params: {
+  scaleCode: 'MVPT_4' | 'TVPS_4' | 'BEERY_VP';
+  itemNumber: number; // MVPT_4 传 1~45；TVPS_4 传 1~18
+  domainCode?: PerceptualDomainCode;
+}): GeneratedPerceptualSvgCard {
+  const { scaleCode, itemNumber } = params;
+
+  // 若为 MVPT-4 且未显式指定 domainCode，按 MVPT-4 标准题册结构自动映射维度
+  let domain: PerceptualDomainCode = params.domainCode || 'DIS';
+  if (scaleCode === 'MVPT_4' && !params.domainCode) {
+    if (itemNumber <= 9) domain = 'DIS';
+    else if (itemNumber <= 18) domain = 'FGR';
+    else if (itemNumber <= 27) domain = 'MEM';
+    else if (itemNumber <= 36) domain = 'CLO';
+    else domain = 'SPA';
+  } else if (scaleCode === 'BEERY_VP') {
+    domain = 'DIS';
+  }
+
+  const prim =
+    PERCEPTUAL_SVG_PRIMITIVES[(itemNumber - 1) % PERCEPTUAL_SVG_PRIMITIVES.length];
+  const fullTargetPaths = [...prim.outerPaths, ...prim.innerDetailPaths];
+  const correctOptionIndex = ((itemNumber * 3 + 1) % 4) as 0 | 1 | 2 | 3;
+
+  // 视觉顺序记忆 (SEQ) 单独构建序列题卡
+  if (domain === 'SEQ') {
+    const baseSeq =
+      itemNumber % 2 === 1
+        ? ['CIRCLE', 'TRIANGLE', 'SQUARE', 'DIAMOND']
+        : ['TRIANGLE', 'CROSS', 'CIRCLE', 'SQUARE', 'DIAMOND'];
+    const targetSvgMarkup = buildSequentialSvg(baseSeq);
+    const d1 = [...baseSeq];
+    [d1[1], d1[2]] = [d1[2], d1[1]];
+    const d2 = [...baseSeq];
+    [d2[0], d2[1]] = [d2[1], d2[0]];
+    const d3 = [...baseSeq];
+    [d3[baseSeq.length - 2], d3[baseSeq.length - 1]] = [
+      d3[baseSeq.length - 1],
+      d3[baseSeq.length - 2],
+    ];
+
+    const distractors = [
+      { svg: buildSequentialSvg(d1), desc: '中部相邻元素顺序颠倒' },
+      { svg: buildSequentialSvg(d2), desc: '首部两个元素顺序颠倒' },
+      { svg: buildSequentialSvg(d3), desc: '尾部两个元素顺序颠倒' },
+    ];
+    const optionsSvgMarkup: [string, string, string, string] = ['', '', '', ''];
+    const distractorAnalysis: [string, string, string, string] = ['', '', '', ''];
+    let dIdx = 0;
+    for (let i = 0; i < 4; i++) {
+      if (i === correctOptionIndex) {
+        optionsSvgMarkup[i] = targetSvgMarkup;
+        distractorAnalysis[i] = '正确选项（序列100%一致）';
+      } else {
+        optionsSvgMarkup[i] = distractors[dIdx].svg;
+        distractorAnalysis[i] = distractors[dIdx].desc;
+        dIdx++;
+      }
+    }
+
+    return {
+      scaleCode,
+      domainCode: 'SEQ',
+      domainNameCn: '视觉顺序记忆（呈现5秒后遮挡）',
+      itemNumber,
+      exposureTimeSec: 5,
+      promptText: '“请仔细看上面这一排图形的顺序 5 秒钟……（5秒后遮挡）现在请指出下面 A、B、C、D 哪一排顺序和刚才一模一样？”',
+      targetSvgMarkup,
+      optionsSvgMarkup,
+      optionLabels: ['A', 'B', 'C', 'D'],
+      correctOptionIndex,
+      distractorAnalysis,
+    };
+  }
+
+  // 构建顶栏目标图形 SVG
+  const targetSvgMarkup = wrapSvgPaths(fullTargetPaths);
+
+  // 根据 6 类非序列感知维度分别生成正确答案与 3 个高仿真同源干扰项
+  let correctSvg = targetSvgMarkup;
+  let distractors: Array<{ svg: string; desc: string }> = [];
+  let domainNameCn = '视觉辨别';
+  let exposureTimeSec: number | null = null;
+  let promptText =
+    '“请看上面这个图形，在下面 A、B、C、D 四个图形里，用手指指出哪一个和上面一模一样？”';
+
+  switch (domain) {
+    case 'DIS':
+    case 'MEM': {
+      domainNameCn =
+        domain === 'MEM'
+          ? '视觉记忆（呈现5秒后遮挡）'
+          : `视觉辨别（${ prim.nameCn }）`;
+      exposureTimeSec = domain === 'MEM' ? 5 : null;
+      promptText =
+        domain === 'MEM'
+          ? '“请仔细看上面这个图形 5 秒钟并记住它……（满5秒遮挡）现在请在 A、B、C、D 里指出刚才看到的是哪一个？”'
+          : '“请看上面这个图形，在下面 A、B、C、D 四个图形里，用手指指出哪一个和上面一模一样？”';
+      correctSvg = wrapSvgPaths(fullTargetPaths);
+      distractors = [
+        {
+          svg: wrapSvgPaths(prim.outerPaths), // 缺失内部细节特征线
+          desc: '局部细节遗漏误差（缺失内部特征线/圆点）',
+        },
+        {
+          svg: wrapSvgPaths([prim.distractorOuterPath, ...prim.innerDetailPaths]),
+          desc: '外轮廓角度/边数微小失真干扰项',
+        },
+        {
+          svg: wrapSvgPaths(fullTargetPaths, {
+            transform: 'translate(160,0) scale(-1,1)',
+          }),
+          desc: '左右水平镜像翻转干扰项',
+        },
+      ];
+      break;
+    }
+
+    case 'SPA': {
+      domainNameCn = `空间关系（方向与旋转辨别 · ${prim.nameCn}）`;
+      promptText =
+        '“请看上面的目标图形，在下面 A、B、C、D 中找出方向、角度和细节位置完全一致的图形。”';
+      correctSvg = wrapSvgPaths(fullTargetPaths);
+      distractors = [
+        {
+          svg: wrapSvgPaths(fullTargetPaths, { transform: 'rotate(90 80 80)' }),
+          desc: '顺时针旋转 90° 空间方向误差',
+        },
+        {
+          svg: wrapSvgPaths(fullTargetPaths, {
+            transform: 'translate(160,0) scale(-1,1)',
+          }),
+          desc: '水平镜像翻转（左右颠倒）误差',
+        },
+        {
+          svg: wrapSvgPaths(fullTargetPaths, {
+            transform: 'translate(0,160) scale(1,-1)',
+          }),
+          desc: '垂直倒置（上下颠倒）误差',
+        },
+      ];
+      break;
+    }
+
+    case 'CON': {
+      domainNameCn = `形式恒常性（缩放与旋转恒常识别 · ${prim.nameCn}）`;
+      promptText =
+        '“请看上面的目标图形，下面哪一个选项里包含形状本质完全一样的图形（即使它缩小或转了个角度）？”';
+      correctSvg = wrapSvgPaths(fullTargetPaths, {
+        transform: 'translate(80,80) scale(0.68) rotate(25) translate(-80,-80)',
+      });
+      distractors = [
+        {
+          svg: wrapSvgPaths([prim.distractorOuterPath], {
+            transform: 'translate(80,80) scale(0.72) rotate(-20) translate(-80,-80)',
+          }),
+          desc: '近形拓扑改变干扰项（边角结构不同）',
+        },
+        {
+          svg: wrapSvgPaths(prim.outerPaths, {
+            transform: 'translate(80,80) scale(0.85, 0.52) translate(-80,-80)',
+          }),
+          desc: '长宽比例非等比拉伸失真干扰项',
+        },
+        {
+          svg: wrapSvgPaths([prim.distractorOuterPath, ...prim.innerDetailPaths], {
+            transform: 'translate(80,80) scale(0.68) rotate(110) translate(-80,-80)',
+          }),
+          desc: '外框顶角变异干扰项',
+        },
+      ];
+      break;
+    }
+
+    case 'FGR': {
+      domainNameCn = `图形-背景分离（复杂网格抗干扰提取 · ${prim.nameCn}）`;
+      promptText =
+        '“请看上面的图形，它藏在下面 A、B、C、D 哪一张复杂的网状背景图里？请把目标图形找出来。”';
+      correctSvg = wrapSvgPaths(fullTargetPaths, {
+        addFigureGroundNoise: true,
+        noiseVariant: 1,
+      });
+      distractors = [
+        {
+          svg: wrapSvgPaths([prim.distractorOuterPath], {
+            addFigureGroundNoise: true,
+            noiseVariant: 2,
+          }),
+          desc: '复杂背景中混入近形多边形干扰项',
+        },
+        {
+          svg: wrapSvgPaths(prim.outerPaths, {
+            transform: 'rotate(90 80 80)',
+            addFigureGroundNoise: true,
+            noiseVariant: 0,
+          }),
+          desc: '复杂背景中图形发生 90° 旋转且缺失内部特征',
+        },
+        {
+          svg: wrapSvgPaths([prim.distractorOuterPath, ...prim.innerDetailPaths], {
+            transform: 'translate(160,0) scale(-1,1)',
+            addFigureGroundNoise: true,
+            noiseVariant: 3,
+          }),
+          desc: '复杂背景中镜像反转变形干扰项',
+        },
+      ];
+      break;
+    }
+
+    case 'CLO': {
+      domainNameCn = `视觉完型（断线轮廓脑内补全 · ${prim.nameCn}）`;
+      promptText =
+        '“如果把下面虚线断开的图形画完整（不能移动线条），哪一个会变成上面一模一样的完整图形？”';
+      correctSvg = wrapSvgPaths(fullTargetPaths, { dashedClosure: true });
+      distractors = [
+        {
+          svg: wrapSvgPaths([prim.distractorOuterPath, ...prim.innerDetailPaths], {
+            dashedClosure: true,
+          }),
+          desc: '断线补全后外框顶点角度与原图不符',
+        },
+        {
+          svg: wrapSvgPaths(prim.outerPaths, { dashedClosure: true }),
+          desc: '断线补全后缺失内部关键结构线',
+        },
+        {
+          svg: wrapSvgPaths(fullTargetPaths, {
+            transform: 'translate(160,0) scale(-1,1)',
+            dashedClosure: true,
+          }),
+          desc: '断线补全后呈左右镜像翻转',
+        },
+      ];
+      break;
+    }
+  }
+
+  const optionsSvgMarkup: [string, string, string, string] = ['', '', '', ''];
+  const distractorAnalysis: [string, string, string, string] = ['', '', '', ''];
+  let dIdx = 0;
+  for (let i = 0; i < 4; i++) {
+    if (i === correctOptionIndex) {
+      optionsSvgMarkup[i] = correctSvg;
+      distractorAnalysis[i] = '正确选项（目标匹配）';
+    } else {
+      optionsSvgMarkup[i] = distractors[dIdx].svg;
+      distractorAnalysis[i] = distractors[dIdx].desc;
+      dIdx++;
+    }
+  }
+
+  return {
+    scaleCode,
+    domainCode: domain,
+    domainNameCn,
+    itemNumber,
+    exposureTimeSec,
+    promptText,
+    targetSvgMarkup,
+    optionsSvgMarkup,
+    optionLabels: ['A', 'B', 'C', 'D'],
+    correctOptionIndex,
+    distractorAnalysis,
+  };
+}
+
+// ============================================================================
+// 九、 规则 R2 核心算法引擎：连续3题0分中止、查表换算与 L0–L5 自动定级纯函数
 // ============================================================================
 
 export interface CeilingCheckResult {
@@ -1142,13 +2066,16 @@ export function calculateBeeryVmiNorms(
     BEERY_VMI_6_ITEMS.find((it) => it.itemNumber === clampedRaw) ||
     BEERY_VMI_6_ITEMS[0];
 
-  // 从 BEERY_AGE_NORM_MATRIX 查找对应实足月龄锚点
   const ageAnchor =
     BEERY_AGE_NORM_MATRIX.find(
       (row) =>
         chronologicalAgeMonths >= row.ageMonthsMin &&
         chronologicalAgeMonths <= row.ageMonthsMax
-    ) || BEERY_AGE_NORM_MATRIX[BEERY_AGE_NORM_MATRIX.length - 1];
+    ) ||
+    (Number.isFinite(chronologicalAgeMonths) &&
+    chronologicalAgeMonths < BEERY_AGE_NORM_MATRIX[0].ageMonthsMin
+      ? BEERY_AGE_NORM_MATRIX[0]
+      : BEERY_AGE_NORM_MATRIX[BEERY_AGE_NORM_MATRIX.length - 1]);
 
   const expectedMeanRaw = ageAnchor.expectedRawScoreMean100[testType];
   const zScore = (clampedRaw - expectedMeanRaw) / ageAnchor.rawScorePer15StdPoints;
@@ -1180,31 +2107,32 @@ export function calculateBeeryVmiNorms(
  * 3. TVPS-4 七大子测验原始分 (0–18) → 量表分 Scaled Score (1–19, Mean=10, SD=3) 与综合标准分换算器
  */
 export function calculateTvps4ProfileNorms(
-  subtestRawScores: Record<'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO', number>,
+  subtestRawScores: Record<PerceptualDomainCode, number>,
   chronologicalAgeYears: number
 ): {
-  scaledScores: Record<'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO', number>;
+  scaledScores: Record<PerceptualDomainCode, number>;
   overallStandardScore: number;
   overallPercentile: number;
   weakestSubtests: Array<{ code: string; nameCn: string; scaledScore: number; matchedSopCards: string[] }>;
 } {
   const clampedAge = Math.max(5, Math.min(18, Math.floor(chronologicalAgeYears)));
-  // 同龄期望原始分均值随年龄从 5岁(约7题) 递增至 14岁+(约14.5题)
-  const expectedRawMean = Math.min(14.5, 6.5 + (clampedAge - 5) * 0.85);
-  const rawSd = 2.4;
+  const ageNormRow =
+    TVPS_4_AGE_NORM_MATRIX.find(
+      (row) => clampedAge >= row.ageYearsMin && clampedAge <= row.ageYearsMax
+    ) || TVPS_4_AGE_NORM_MATRIX[TVPS_4_AGE_NORM_MATRIX.length - 1];
 
-  const scaledScores = {} as Record<'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO', number>;
+  const scaledScores = {} as Record<PerceptualDomainCode, number>;
   let sumScaled = 0;
 
-  (Object.keys(subtestRawScores) as Array<'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO'>).forEach((key) => {
+  (Object.keys(subtestRawScores) as PerceptualDomainCode[]).forEach((key) => {
     const raw = Math.max(0, Math.min(18, subtestRawScores[key]));
-    const z = (raw - expectedRawMean) / rawSd;
+    const expectedMeanForSubtest = ageNormRow.expectedSubtestRawMean10[key] ?? 10;
+    const z = (raw - expectedMeanForSubtest) / ageNormRow.rawPer3ScaledPoints;
     const scaled = Math.max(1, Math.min(19, Math.round(10 + z * 3)));
     scaledScores[key] = scaled;
     sumScaled += scaled;
   });
 
-  // 7个子测验量表分之和（均值 70，标准差约 12.5）换算为综合标准分 (Mean=100, SD=15)
   const overallZ = (sumScaled - 70) / 12.5;
   const overallStandardScore = Math.max(45, Math.min(145, Math.round(100 + overallZ * 15)));
   const overallPercentile = Math.max(
@@ -1218,7 +2146,7 @@ export function calculateTvps4ProfileNorms(
     scaledScore: scaledScores[spec.subtestCode],
     matchedSopCards: spec.matchedSopCards,
   }))
-    .filter((item) => item.scaledScore <= 7) // 量表分 ≤ 7（对应标准分 < 85）视为显著感知短板
+    .filter((item) => item.scaledScore <= 7)
     .sort((a, b) => a.scaledScore - b.scaledScore);
 
   return {
@@ -1226,6 +2154,90 @@ export function calculateTvps4ProfileNorms(
     overallStandardScore,
     overallPercentile,
     weakestSubtests,
+  };
+}
+
+/**
+ * 3.5 MVPT-4 (45题统一标准版) 原始分 → 标准分 (Mean=100, SD=15)、百分位与薄弱维度解析器
+ */
+export function calculateMvpt4Norms(params: {
+  rawScore: number;
+  chronologicalAgeYears: number;
+  itemScores45?: Array<0 | 1>; // 若传入 MVPT-4 逐题得分(长度45)，自动分析5大维度哪一项错题最多
+}): {
+  scaleCode: 'MVPT_4';
+  rawScore: number;
+  maxPossibleRaw: 45;
+  standardScore: number | null;
+  percentileRank: number | null;
+  ageEquivalentLabel: string;
+  normApplied: boolean;
+  normNote: string;
+  weakestDomains: Array<{ domainCode: string; domainNameCn: string; accuracyPct: number; matchedSopCards: string[] }>;
+} {
+  const clampedRaw = Math.max(0, Math.min(45, Math.round(params.rawScore)));
+  const ageYears = Math.floor(params.chronologicalAgeYears);
+  const normRow = MVPT_4_SCALE_SPEC.ageNormTable45Items.find((r) => r.ageYears === ageYears);
+  const normApplied =
+    Number.isFinite(ageYears) && ageYears >= 4 && ageYears <= 13 && normRow !== undefined;
+
+  const zScore = normRow ? (clampedRaw - normRow.expectedMeanRaw) / normRow.sdRaw : 0;
+  const standardScore =
+    normApplied && normRow
+      ? Math.max(45, Math.min(145, Math.round(100 + zScore * 15)))
+      : null;
+  const percentileRank =
+    normApplied && normRow
+      ? Math.max(1, Math.min(99, Math.round(50 * (1 + Math.tanh(zScore * 0.79788)))))
+      : null;
+
+  const matchedEqRow =
+    normApplied && normRow
+      ? MVPT_4_SCALE_SPEC.ageNormTable45Items.find((r) => clampedRaw <= r.expectedMeanRaw + 2) ||
+        MVPT_4_SCALE_SPEC.ageNormTable45Items[MVPT_4_SCALE_SPEC.ageNormTable45Items.length - 1]
+      : undefined;
+
+  const weakestDomains: Array<{
+    domainCode: string;
+    domainNameCn: string;
+    accuracyPct: number;
+    matchedSopCards: string[];
+  }> = [];
+
+  if (params.itemScores45 && params.itemScores45.length > 0) {
+    MVPT_4_SCALE_SPEC.domainSections.forEach((sec) => {
+      const hits = sec.itemNumbers.reduce((acc, qNum) => {
+        const val = params.itemScores45?.[qNum - 1];
+        return acc + (val === 1 ? 1 : 0);
+      }, 0);
+      const pct = Math.round((hits / sec.itemNumbers.length) * 100);
+      if (pct < 65) {
+        weakestDomains.push({
+          domainCode: sec.domainCode,
+          domainNameCn: sec.domainNameCn,
+          accuracyPct: pct,
+          matchedSopCards: sec.matchedSopCards,
+        });
+      }
+    });
+    weakestDomains.sort((a, b) => a.accuracyPct - b.accuracyPct);
+  }
+
+  return {
+    scaleCode: 'MVPT_4',
+    rawScore: clampedRaw,
+    maxPossibleRaw: 45,
+    standardScore,
+    percentileRank,
+    ageEquivalentLabel:
+      normApplied && matchedEqRow ? matchedEqRow.ageEquivalentLabel : '未计算（需手册常模）',
+    normApplied,
+    normNote: normApplied
+      ? '内置 4–13 岁参考锚点，正式标准分以手册为准'
+      : ageYears < 4
+        ? '低于 4 岁常模下限，请录入手册标准分'
+        : '超出内置常模表（4–13 岁），请录入手册标准分',
+    weakestDomains,
   };
 }
 
@@ -1249,7 +2261,6 @@ export function evaluateDemTestResult(params: {
   const verticalTotalSec = Number(
     (params.testAVerticalSec + params.testBVerticalSec).toFixed(1)
   );
-  // DEM 标准修正公式：Adjusted Horizontal Time = Raw Time × [80 / (80 - o + a)]
   const denominator = Math.max(40, 80 - params.omissionErrors + params.additionErrors);
   const horizontalAdjustedSec = Number(
     (params.testCHorizontalRawSec * (80 / denominator)).toFixed(1)
@@ -1288,7 +2299,7 @@ export function evaluateDemTestResult(params: {
 }
 
 /**
- * 5. 综合定级引擎（严格遵循原方案 3.6 节与 SRS 规则 R2：输出 L0–L5 定级、六维雷达向量与推荐操作卡）
+ * 5. 综合定级引擎（严格遵循原方案 3.6 节与 SRS 规则 R2：统一支持 TVPS-4 或 MVPT-4 无运动视觉感知标准分输入）
  */
 export interface ComprehensiveGradingInput {
   isRedZonePositive: boolean;
@@ -1298,8 +2309,9 @@ export interface ComprehensiveGradingInput {
   npcBreakCm: number;
   accomFacilityCpm: number;
   nsucoMinScore: 1 | 2 | 3 | 4 | 5;
-  tvpsOverallStdScore: number;
-  tvpsWeakestSubtest?: 'DIS' | 'MEM' | 'SPA' | 'CON' | 'SEQ' | 'FGR' | 'CLO';
+  tvpsOverallStdScore?: number;       // TVPS-4 综合标准分（与 mvpt4StdScore 二选一或同时传入）
+  mvpt4StdScore?: number;             // MVPT-4 综合标准分（Mean=100, SD=15）
+  tvpsWeakestSubtest?: PerceptualDomainCode;
   beeryVmiStdScore: number;
   beeryVpStdScore?: number;
   beeryMcStdScore?: number;
@@ -1318,6 +2330,27 @@ export interface ComprehensiveGradingOutput {
 export function determineRecommendedLevelL0ToL5(
   input: ComprehensiveGradingInput
 ): ComprehensiveGradingOutput {
+  const measuredMotorFreeScores = [input.tvpsOverallStdScore, input.mvpt4StdScore].filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value)
+  );
+  const motorFreePerceptionStd =
+    measuredMotorFreeScores.length > 0
+      ? Math.min(...measuredMotorFreeScores)
+      : (input.beeryVpStdScore ?? 85);
+  const motorFreeSource =
+    input.tvpsOverallStdScore !== undefined && input.mvpt4StdScore !== undefined
+      ? 'TVPS-4/MVPT-4 取较低值'
+      : input.tvpsOverallStdScore !== undefined
+        ? 'TVPS-4'
+        : input.mvpt4StdScore !== undefined
+          ? 'MVPT-4'
+          : input.beeryVpStdScore !== undefined
+            ? 'Beery VP 参考分'
+            : '未施测（参考值）';
+  const weakestHint = input.tvpsWeakestSubtest
+    ? `；TVPS-4 最弱子测验 ${input.tvpsWeakestSubtest}`
+    : '';
+
   const l0Score = Math.min(95, Math.max(30, Math.round(input.quadrupedHoldSec * 6 + (input.spsrcSensoryStable ? 35 : 10))));
   const l1Score = Math.min(
     95,
@@ -1331,7 +2364,7 @@ export function determineRecommendedLevelL0ToL5(
       )
     )
   );
-  const l2Score = Math.min(95, Math.max(25, Math.round((input.tvpsOverallStdScore - 50) * 1.1)));
+  const l2Score = Math.min(95, Math.max(25, Math.round((motorFreePerceptionStd - 50) * 1.1)));
   const l3Score = Math.min(95, Math.max(25, Math.round((input.beeryVmiStdScore - 50) * 1.1)));
   const l4Score = input.classroomCopyAccuracyPct ?? Math.round((l2Score + l3Score) * 0.45);
   const l5Score = Math.round((l0Score + l3Score + l4Score) / 3);
@@ -1380,14 +2413,13 @@ export function determineRecommendedLevelL0ToL5(
     };
   }
 
-  const vpStd = input.beeryVpStdScore ?? input.tvpsOverallStdScore;
   const mcStd = input.beeryMcStdScore ?? input.beeryVmiStdScore;
-  if (input.tvpsOverallStdScore < 80 && vpStd <= mcStd) {
+  if (motorFreePerceptionStd < 80 && motorFreePerceptionStd <= mcStd) {
     return {
       triageStatus: 'GREEN_ACTIVE',
       recommendedLevel: 'L2',
       recommendedLevelLabel: 'L2 视觉感知阶段（图形-背景/空间位置/视觉记忆）',
-      clinicalBottleneckAnalysis: `无运动视觉感知得分（TVPS-4 标准分 ${input.tvpsOverallStdScore}）显著低于手部运动协调表现，属于典型“看不准（复杂背景提取与空间编码弱）”，重点开展图形-背景分离与几何空间训练。`,
+      clinicalBottleneckAnalysis: `无运动视觉感知得分（${motorFreeSource} ${motorFreePerceptionStd}）显著低于手部运动协调表现${weakestHint}，属于典型“看不准（复杂背景提取与空间编码弱）”，重点开展图形-背景分离与几何空间训练。`,
       radarSixDimensions,
       recommendedSopCardCodes: ['操作卡 3-1', '操作卡 3-2', '操作卡 3-3'],
     };

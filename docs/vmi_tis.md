@@ -49,14 +49,15 @@
 2. **第二层：视觉通路与视觉效率专科录入台**：
    - 结构化记录双眼/单眼裸眼及矫正视力、屈光状态、调节幅度（Age Duane 尺近点 cm/D）、调节灵活度（±2.00D 双面镜 cpm）、双眼视三级功能（Worth 四点同时视、融合视范围、Randot/Titmus 立体视锐度）、集合近点（NPC cm）、NSUCO 眼动标准化观察分级（注视/追视/扫视及头身代偿评分）与遮盖试验结果。
 3. **第三层：标准化电子量表双屏在线施测台**：
-   - **支持量表**：Beery VMI-6（视觉运动整合全表30题/短表21题 + 视觉感知补充测验 + 运动协调补充测验）、TVPS-4（视觉感知7项子测验）、MVPT-3（无运动视觉感知）、DEM（发育性眼动纵横数字快速认读）、TVMS-3、RAN/RAS、SIPT/SPSRC。
+   - **支持量表**：Beery VMI-6（视觉运动整合全表30题/短表21题 + 视觉感知补充测验 + 运动协调补充测验）、TVPS-4（视觉感知7项子测验）、MVPT-4（无运动视觉感知，45题，4岁–成人）、DEM（发育性眼动纵横数字快速认读）、TVMS-3、RAN/RAS、SIPT/SPSRC。
    - **双屏施测交互（支持 PC+一体机 或 教师平板+学生Android平板）**：学生端屏幕呈现标准比例范图或指认题卡（锁定缩放与旋转），采集触控笔临摹轨迹、作答用时、笔压与停顿次数；评估师端屏幕同步查看学生作答画面，对照内置《评分手册标准》一键判定 `1分（通过）` 或 `0分（未通过）`，勾选伴随行为（如头部倾斜、频繁抬头、手腕悬空）。
    - **自动中止与常模换算**：当连续 3 道题判定为 0 分时自动触发测验中止（Ceiling Rule）；施测结束自动根据学生精确月龄查表换算原始分、标准分、百分位、等效发展年龄，并对比“看不准（感知）”“动不准（运动）”与“整合不准”，输出 L0–L5 综合定级建议。
 4. **第四层：评估报告生成与历次对比中心**：一键生成包含筛查分流结论、视光专科结果、量表剖面图、六维能力雷达图、优势短板剖析及训练参数建议的《VMI-TIS 综合评估报告单》；当前实现为 HTML 报告（/api/reports/<id>.html），PDF 导出与脱敏打印未实现。
 5. **教师端实施口径（5 步向导）**：评估中心按「① 选学生与评估阶段（`BASELINE` / `STAGE_8W` / `TRANSITION`）→ ② 初筛与红区门禁 → ③ 视光与眼动（可跳过）→ ④ 量表施测 → ⑤ 汇总、保存与报告」组织，不再使用功能 Tab 并列。
    - **门禁只在前端**：`PENDING_SCREENING` 时步骤 ③–⑤ 禁用，必须先提交初筛；`RED_ZONE_LOCKED` / `REFERRAL_UPLOADED` 时仅禁用步骤 ③–④，仍可在步骤 ⑤ 保存初筛级 L0 记录；`GREEN_ACTIVE` 放行。服务端 `createRecord` 的红区 L0 行为与 R1 训练/排课守卫不变，`triageStatus` 仍只归 `TriageService`。
    - **阶段透传**：`submitScaleScore` 与 `createRecord` 均携带 `evalPhase`；R2 会话键为 `studentId:evalPhase:sessionId`，只有 Beery 主测验走 R2 判分。
-   - **原始分链路**：Beery 主测验逐题判 1/0，连续 3 题 0 分由服务端中止；「确认原始分」把本轮 `totalRawScore` 写入记录 `beeryVmiRaw`（仍可手工修改）。TVPS-4 种子只提供样例题卡，7 项原始分手工作业录入，系统不伪造 18 题题库；DEM 用种子刺激矩阵出示后手工录入用时与错误数。
+   - **原始分链路**：Beery 主测验逐题判 1/0，连续 3 题 0 分由服务端中止；「确认原始分」把本轮 `totalRawScore` 写入记录 `beeryVmiRaw`（仍可手工修改）。TVPS-4 种子只提供样例题卡，7 项原始分手工作业录入，系统不伪造 18 题题库；MVPT-4 已接入 45 题记分台（逐题 1/0、MEM 5 秒提示、原始分与手册标准分），不内置官方图版；DEM 用种子刺激矩阵出示后手工录入用时与错误数。
+   - **量表数据来源分级**：种子侧按 `OFFICIAL_LICENSED` / `MANUAL_ENTRY_ONLY` / `PROJECT_APPROXIMATION` / `STRUCTURE_ONLY` 标注；报告侧尚未携带该标签。只有前两类可写入正式结论；自动换算分标“参考换算”，手册标准分优先。电子题卡仅用于训练与演示，不替代实物题册。
    - **报告**：保存后由服务端自动定级并生成 HTML 报告，页面展示 `reportFileUrl` 链接；报告失败不阻塞保存，历史评估按 `evalPhase` 分组并可逐条重新生成。
 
 #### 6.2.4 模块四：智能 IEP/ITP 计划制定与可视化排课系统（IEP Builder & Scheduler）
@@ -419,7 +420,7 @@ vmi-tis-platform/
 1. `prisma/schema.prisma`：
    - 严格采用《SRS V2.1》第 4.1 节的双模兼容设计（默认 `provider = "sqlite"`，无缝兼容 `postgresql`）。
    - 严禁使用 SQLite 不支持的 `String[]` 标量数组或原生 `Json` 类型（统一使用 JSON 序列化 `String` 字段）。
-   - 必须完整包含 `Student`、`AssessmentTriageReferral`、`AssessmentRecord`（使用 Beery VMI-6 / TVPS-4 / MVPT-3 / DEM / NPC / NSUCO，严禁误用 DTVP-3）、`SopCard`、`IepPlan`、`TrainingSession`、`HomeworkCheckin`（含7天视频自动清理字段）和 `AuditLog`（WHO/WHEN/WHAT 医疗审计表）共 8 张表。
+   - 必须完整包含 `Student`、`AssessmentTriageReferral`、`AssessmentRecord`（使用 Beery VMI-6 / TVPS-4 / MVPT-4 / DEM / NPC / NSUCO，严禁误用 DTVP-3；当前 schema 保留 `mvpt3Std` 历史列）、`SopCard`、`IepPlan`、`TrainingSession`、`HomeworkCheckin`（含7天视频自动清理字段）和 `AuditLog`（WHO/WHEN/WHAT 医疗审计表）共 8 张表。
 2. `packages/shared-types/src/index.ts`：
    - 定义前后端 100% 共享的 TypeScript 接口、枚举（`StudentTriageStatus`、`CapabilityLevel L0-L5`、`PromptLevel`）、API 请求/响应 DTO，以及 Socket.io 双屏同步事件负载（`SWITCH_PAD_TASK`、`PAD_TRIAL_COMPLETED`、`eyetracker-stream`）。
 3. `docs/IMPLEMENTATION_TASKS.md`（给 DeepSeek 的原子级编码说明书）：

@@ -76,6 +76,11 @@ async function main() {
   );
   check('找到林小宇', Boolean(lin), 'VMI-2026001 不存在');
 
+  const other = students.body.items.find(
+    (item) => item.studentCode === 'VMI-2026005',
+  );
+  check('找到刘诺一', Boolean(other), 'VMI-2026005 不存在');
+
   const linDetail = await call(`/students/${lin.id}`);
   const ageMonths = monthsBetween(new Date(linDetail.body.birthDate));
   const ageYears = ageMonths / 12;
@@ -377,6 +382,133 @@ async function main() {
     'MVPT-3 兜底参与定级 → L2',
     mvptOnly.body.autoLevel === 'L2',
     `level=${mvptOnly.body?.autoLevel}`,
+  );
+
+  // ===== b7 MVPT-4 接入：逐题汇总、自动换算、手册标准分与报告 =====
+  const mvpt4Auto = await createRecord(other.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    mvpt4ItemScores45: Array.from({ length: 45 }, () => 1),
+    classroomAdaptationPass: true,
+  });
+  const mvpt4AutoMeta = JSON.parse(mvpt4Auto.body.assessmentMetaJson);
+  check(
+    'MVPT-4 45 题逐题全 1 → 原始分 45、标准分落库、meta 写入',
+    mvpt4Auto.status === 201 &&
+      typeof mvpt4Auto.body.mvpt4Std === 'number' &&
+      mvpt4Auto.body.mvpt4Std > 100 &&
+      mvpt4AutoMeta.mvpt4?.rawScore === 45 &&
+      mvpt4AutoMeta.mvpt4?.normApplied === true &&
+      mvpt4AutoMeta.mvpt4?.weakestDomains?.length === 0,
+    `status=${mvpt4Auto.status}, std=${mvpt4Auto.body?.mvpt4Std}, meta=${JSON.stringify(mvpt4AutoMeta.mvpt4)}`,
+  );
+
+  const mvpt4Manual = await createRecord(other.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    mvpt4Std: 70,
+    classroomAdaptationPass: true,
+  });
+  check(
+    'MVPT-4 手册标准分 70 参与定级 → L2',
+    mvpt4Manual.status === 201 &&
+      mvpt4Manual.body.mvpt4Std === 70 &&
+      mvpt4Manual.body.autoLevel === 'L2',
+    `status=${mvpt4Manual.status}, std=${mvpt4Manual.body?.mvpt4Std}, level=${mvpt4Manual.body?.autoLevel}`,
+  );
+
+  const mvpt4ManualPriority = await createRecord(other.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    mvpt4RawScore: 30,
+    mvpt4Std: 70,
+    classroomAdaptationPass: true,
+  });
+  check(
+    'MVPT-4 手册标准分优先于自动换算',
+    mvpt4ManualPriority.status === 201 &&
+      mvpt4ManualPriority.body.mvpt4Std === 70 &&
+      mvpt4ManualPriority.body.autoLevel === 'L2',
+    `status=${mvpt4ManualPriority.status}, std=${mvpt4ManualPriority.body?.mvpt4Std}, level=${mvpt4ManualPriority.body?.autoLevel}`,
+  );
+
+  const mvpt4BadItems = await createRecord(other.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    mvpt4ItemScores45: Array.from({ length: 44 }, () => 1),
+    classroomAdaptationPass: true,
+  });
+  check(
+    'MVPT-4 逐题数组必须恰好 45 项',
+    mvpt4BadItems.status === 400,
+    `status=${mvpt4BadItems.status}`,
+  );
+
+  const mvpt4Adult = seed.calculateMvpt4Norms({
+    rawScore: 30,
+    chronologicalAgeYears: 16,
+  });
+  check(
+    'MVPT-4 14 岁以上不自动换算',
+    mvpt4Adult.standardScore === null && mvpt4Adult.normApplied === false,
+    JSON.stringify(mvpt4Adult),
+  );
+
+  const mvpt4Weak = await createRecord(other.id, {
+    stabilityPass: true,
+    npcCm: 7,
+    beeryVmiStd: 95,
+    mvpt4ItemScores45: Array.from({ length: 45 }, () => 0),
+    classroomAdaptationPass: true,
+  });
+  const mvpt4WeakMeta = JSON.parse(mvpt4Weak.body.assessmentMetaJson);
+  check(
+    'MVPT-4 逐题全 0 → 5 个薄弱维度',
+    mvpt4Weak.status === 201 &&
+      mvpt4WeakMeta.mvpt4?.weakestDomains?.length === 5 &&
+      mvpt4WeakMeta.mvpt4.weakestDomains.every(
+        (domain) => domain.accuracyPct === 0,
+      ),
+    JSON.stringify(mvpt4WeakMeta.mvpt4?.weakestDomains),
+  );
+
+  const mvpt4Report = await call(
+    `/assessments/${mvpt4Auto.body.id}/generate-report`,
+    { method: 'POST' },
+  );
+  const mvpt4ReportPage = mvpt4Report.body?.reportFileUrl
+    ? await fetch(`${ORIGIN}${mvpt4Report.body.reportFileUrl}`)
+    : null;
+  const mvpt4ReportHtml = mvpt4ReportPage
+    ? await mvpt4ReportPage.text()
+    : '';
+  check(
+    '报告包含 MVPT-4 标准分、原始分与薄弱维度',
+    mvpt4Report.status === 201 &&
+      mvpt4ReportHtml.includes('MVPT-4 标准分') &&
+      mvpt4ReportHtml.includes('MVPT-4 原始分') &&
+      mvpt4ReportHtml.includes('MVPT-4 薄弱维度'),
+    `status=${mvpt4Report.status}`,
+  );
+  const mvpt4WeakReport = await call(
+    `/assessments/${mvpt4Weak.body.id}/generate-report`,
+    { method: 'POST' },
+  );
+  const mvpt4WeakReportHtml = mvpt4WeakReport.body?.reportFileUrl
+    ? await (
+        await fetch(`${ORIGIN}${mvpt4WeakReport.body.reportFileUrl}`)
+      ).text()
+    : '';
+  check(
+    '报告渲染 MVPT-4 薄弱维度明细',
+    mvpt4WeakReport.status === 201 &&
+      mvpt4WeakReportHtml.includes('MVPT-4 薄弱维度') &&
+      mvpt4WeakReportHtml.includes('0%'),
+    `status=${mvpt4WeakReport.status}`,
   );
 
   const l5 = await createRecord(lin.id, {

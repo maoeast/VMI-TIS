@@ -12,7 +12,9 @@ export interface AssessmentRecordForm {
   npcCm: string;
   accomFacilityCpm: string;
   tvps4Std: string;
-  mvpt3Std: string;
+  mvpt4RawScore: string;
+  mvpt4ItemScores45: string;
+  mvpt4Std: string;
   beeryVmiStd: string;
   beeryVmiRaw: string;
   beeryVpStd: string;
@@ -52,7 +54,9 @@ export const EMPTY_RECORD_FORM: AssessmentRecordForm = {
   npcCm: '',
   accomFacilityCpm: '',
   tvps4Std: '',
-  mvpt3Std: '',
+  mvpt4RawScore: '',
+  mvpt4ItemScores45: '',
+  mvpt4Std: '',
   beeryVmiStd: '',
   beeryVmiRaw: '',
   beeryVpStd: '',
@@ -83,7 +87,8 @@ const MEASUREMENT_FIELDS: NumericRecordField[] = [
   'npcCm',
   'accomFacilityCpm',
   'tvps4Std',
-  'mvpt3Std',
+  'mvpt4RawScore',
+  'mvpt4Std',
   'beeryVmiStd',
   'beeryVmiRaw',
   'beeryVpStd',
@@ -108,7 +113,10 @@ const MEASUREMENT_FIELDS: NumericRecordField[] = [
 
 /** 第 5 步保存前判定“至少一项视光/量表数据”；红区 L0 只带初筛时由调用方豁免。 */
 export function hasAnyMeasurement(form: AssessmentRecordForm): boolean {
-  return MEASUREMENT_FIELDS.some((field) => form[field].trim() !== '');
+  return (
+    MEASUREMENT_FIELDS.some((field) => form[field].trim() !== '') ||
+    /^[01]{45}$/.test(form.mvpt4ItemScores45)
+  );
 }
 
 export function RecordNumberField({
@@ -264,9 +272,16 @@ function FormSummarySection({
         </div>
 
         <div>
-          <h3 className="text-xs font-bold text-teal-800">TVPS-4 / MVPT-3</h3>
+          <h3 className="text-xs font-bold text-teal-800">TVPS-4 / MVPT-4</h3>
           <SummaryRow label="TVPS-4 标准分" value={textOrEmpty(form.tvps4Std)} />
-          <SummaryRow label="MVPT-3 标准分" value={textOrEmpty(form.mvpt3Std)} />
+          <SummaryRow
+            label="MVPT-4 原始分 / 标准分"
+            value={pairText(form.mvpt4RawScore, form.mvpt4Std)}
+          />
+          <SummaryRow
+            label="MVPT-4 逐题已评（未满 45 不入库）"
+            value={`${form.mvpt4ItemScores45.replace(/-/g, '').length} / 45`}
+          />
           <SummaryRow label="TVPS 七项原始分" value={tvpsText} />
         </div>
 
@@ -377,6 +392,25 @@ function SaveReportSection({
             <p className="mt-1">
               TVPS-4 综合标准分：{recordMeta.tvps4.overallStandardScore}
             </p>
+          )}
+          {recordMeta.mvpt4 && (
+            <div className="mt-1">
+              <p>
+                MVPT-4 标准分：{recordMeta.mvpt4.standardScore ?? '未录入'}（
+                {recordMeta.mvpt4.normApplied ? '内置参考换算' : '手册录入'}）
+              </p>
+              <p>
+                MVPT-4 薄弱维度：
+                {recordMeta.mvpt4.weakestDomains.length > 0
+                  ? recordMeta.mvpt4.weakestDomains
+                      .map(
+                        (domain) =>
+                          `${domain.domainNameCn} ${domain.accuracyPct}%`,
+                      )
+                      .join('、')
+                  : '无（未录入逐题或各维度 ≥65%）'}
+              </p>
+            </div>
           )}
         </div>
       )}

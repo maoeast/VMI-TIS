@@ -368,7 +368,13 @@ export function AssessmentPage() {
         npcCm: numberOrUndefined(recordForm.npcCm),
         accomFacilityCpm: numberOrUndefined(recordForm.accomFacilityCpm),
         tvps4Std: numberOrUndefined(recordForm.tvps4Std),
-        mvpt3Std: numberOrUndefined(recordForm.mvpt3Std),
+        mvpt4RawScore: numberOrUndefined(recordForm.mvpt4RawScore),
+        mvpt4ItemScores45: /^[01]{45}$/.test(recordForm.mvpt4ItemScores45)
+          ? recordForm.mvpt4ItemScores45
+              .split('')
+              .map((value) => (value === '1' ? 1 : 0) as 0 | 1)
+          : undefined,
+        mvpt4Std: numberOrUndefined(recordForm.mvpt4Std),
         beeryVmiStd: numberOrUndefined(recordForm.beeryVmiStd),
         beeryVmiRaw: numberOrUndefined(recordForm.beeryVmiRaw),
         beeryVpStd: numberOrUndefined(recordForm.beeryVpStd),

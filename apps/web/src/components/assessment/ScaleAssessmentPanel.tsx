@@ -4,7 +4,7 @@ import type {
   AssessmentCardChangePayload,
   AssessmentCardType,
 } from '@vmi-tis/shared-types';
-import { TVPS_4_SUBTESTS } from '@vmi-tis/shared-types/assessment-seed';
+import { MVPT_4_SCALE_SPEC, TVPS_4_SUBTESTS } from '@vmi-tis/shared-types/assessment-seed';
 import type { ScaleScoreResponse } from '../../api/client';
 import { useAppStore } from '../../store/useAppStore';
 import { BeeryVmiCard } from './BeeryVmiCard';
@@ -399,15 +399,198 @@ function DemSection({
   );
 }
 
+/** MVPT-4 45 题记分台：实物图册施测，软件只记分。 */
+function Mvpt4Section({ form, onFieldChange }: FieldProps) {
+  const scores = Array.from({ length: 45 }, (_, index) => {
+    const char = form.mvpt4ItemScores45[index];
+    return char === '1' ? 1 : char === '0' ? 0 : null;
+  });
+  const scoredCount = scores.filter((value) => value !== null).length;
+  const correctCount = scores.filter((value) => value === 1).length;
+  const weakDomains = MVPT_4_SCALE_SPEC.domainSections
+    .map((section) => {
+      const fullyScored = section.itemNumbers.every(
+        (itemNumber) => scores[itemNumber - 1] !== null,
+      );
+      if (!fullyScored) return null;
+      const hits = section.itemNumbers.reduce(
+        (sum, itemNumber) => sum + (scores[itemNumber - 1] === 1 ? 1 : 0),
+        0,
+      );
+      const accuracyPct = Math.round((hits / section.itemNumbers.length) * 100);
+      return accuracyPct < 65
+        ? {
+            name: section.domainNameCn,
+            accuracyPct,
+            cards: section.matchedSopCards.join('、'),
+          }
+        : null;
+    })
+    .filter(
+      (item): item is { name: string; accuracyPct: number; cards: string } =>
+        item !== null,
+    );
+  const [memRemaining, setMemRemaining] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (memRemaining === null || memRemaining <= 0) return;
+    const timer = setTimeout(
+      () => setMemRemaining((value) => (value === null ? null : value - 1)),
+      1000,
+    );
+    return () => clearTimeout(timer);
+  }, [memRemaining]);
+
+  const updateScore = (itemNumber: number, value: string) => {
+    const next: string[] = Array.from({ length: 45 }, (_, index) => {
+      const char = form.mvpt4ItemScores45[index];
+      return char === '1' ? '1' : char === '0' ? '0' : '-';
+    });
+    next[itemNumber - 1] = value === '' ? '-' : value;
+    onFieldChange('mvpt4ItemScores45', next.join(''));
+  };
+
+  return (
+    <section className="card p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-slate-800">
+            第四步：MVPT-4 记分台（45 题）
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            用医院采购的 MVPT-4 实物图册施测；本面板只记分，不内置官方图版。
+            逐题选择 1/0；MEM 题组 19–27 点「开始 5 秒」提示呈现与遮挡。
+          </p>
+        </div>
+        <span className="badge bg-teal-100 text-teal-800">
+          已评 {scoredCount}/45 · 正确 {correctCount}
+        </span>
+      </div>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {MVPT_4_SCALE_SPEC.domainSections.map((section) => (
+          <div
+            key={section.domainCode}
+            className="rounded-lg border border-slate-200 p-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-bold text-slate-700">
+                {section.domainNameCn}
+              </h3>
+              <span className="text-[11px] text-slate-400">
+                题 {section.itemNumbers[0]}–
+                {section.itemNumbers[section.itemNumbers.length - 1]}
+              </span>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              {section.standardCueText}
+            </p>
+            {section.exposureTimeSec === 5 && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => setMemRemaining(5)}
+                >
+                  开始 5 秒呈现
+                </button>
+                {memRemaining !== null && (
+                  <span className="text-[11px] font-semibold text-amber-700">
+                    {memRemaining > 0
+                      ? `呈现中 ${memRemaining}s`
+                      : '遮挡，请学生指认'}
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="mt-2 grid grid-cols-9 gap-1">
+              {section.itemNumbers.map((itemNumber) => (
+                <label
+                  key={itemNumber}
+                  className="text-center text-[10px] text-slate-500"
+                >
+                  {itemNumber}
+                  <select
+                    value={
+                      scores[itemNumber - 1] === null
+                        ? ''
+                        : String(scores[itemNumber - 1])
+                    }
+                    onChange={(event) =>
+                      updateScore(itemNumber, event.target.value)
+                    }
+                    className="input mt-0.5 h-8 p-0 text-center text-xs"
+                  >
+                    <option value="">—</option>
+                    <option value="1">1</option>
+                    <option value="0">0</option>
+                  </select>
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <RecordNumberField
+          label="MVPT-4 原始分（0–45；留空按逐题汇总）"
+          field="mvpt4RawScore"
+          form={form}
+          onChange={onFieldChange}
+        />
+        <RecordNumberField
+          label="MVPT-4 标准分（手册录入；14 岁以上必填）"
+          field="mvpt4Std"
+          form={form}
+          onChange={onFieldChange}
+        />
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          onClick={() => onFieldChange('mvpt4RawScore', String(correctCount))}
+        >
+          把正确数填入原始分
+        </button>
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          onClick={() => onFieldChange('mvpt4ItemScores45', '')}
+        >
+          清空逐题
+        </button>
+        <span className="text-[11px] text-slate-400">
+          14 岁以上自动换算不生效，请按手册录入标准分；4–13
+          岁留空标准分时服务端按内置锚点参考换算。
+        </span>
+      </div>
+      <div className="mt-2 rounded-lg bg-amber-50 p-2 text-[11px] text-amber-800">
+        {scoredCount < 45
+          ? `逐题已评 ${scoredCount}/45：只有 45 题全部判定，逐题才会随记录保存；当前不解析薄弱维度。`
+          : weakDomains.length > 0
+            ? `薄弱维度（正确率 <65%）：${weakDomains
+                .map(
+                  (domain) =>
+                    `${domain.name} ${domain.accuracyPct}%（${domain.cards}）`,
+                )
+                .join('；')}`
+            : '薄弱维度：无（各维度正确率均 ≥65%）。'}
+      </div>
+    </section>
+  );
+}
+
 function SupplementSection({ form, onFieldChange }: FieldProps) {
   return (
     <section className="card p-5">
       <h2 className="text-sm font-bold text-slate-800">
-        第四步：Beery VP / MC 与 MVPT-3 手工录入
+        第四步：Beery VP / MC 补充录入
       </h2>
       <p className="mt-1 text-xs text-slate-500">
-        补充测验原始分可独立录入；留空不参与换算。MVPT-3
-        仅作定级输入的兼容替代，不写入 TVPS-4 标准分列。
+        补充测验原始分可独立录入；留空不参与换算。MVPT-4
+        记分台在上方单独录入。
       </p>
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <RecordNumberField
@@ -431,12 +614,6 @@ function SupplementSection({ form, onFieldChange }: FieldProps) {
         <RecordNumberField
           label="Beery MC 标准分"
           field="beeryMcStd"
-          form={form}
-          onChange={onFieldChange}
-        />
-        <RecordNumberField
-          label="MVPT-3 标准分"
-          field="mvpt3Std"
           form={form}
           onChange={onFieldChange}
         />
@@ -692,6 +869,7 @@ export function ScaleAssessmentPanel({
         onPhaseChange={setTvpsPhase}
         onRemainingChange={setTvpsRemaining}
       />
+      <Mvpt4Section form={form} onFieldChange={onFieldChange} />
       <DemSection
         form={form}
         onFieldChange={onFieldChange}

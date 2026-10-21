@@ -138,6 +138,7 @@ export class AssessmentRecordService {
           beeryMcStd: grading.beeryMcStd ?? null,
           tvps4Std: grading.tvps4Std ?? null,
           mvpt3Std: dto.mvpt3Std ?? null,
+          mvpt4Std: grading.mvpt4Std ?? null,
           demNormTier: grading.demNormTier ?? null,
           radarScoresJson: grading.radarScoresJson,
           assessmentMetaJson: grading.assessmentMetaJson,

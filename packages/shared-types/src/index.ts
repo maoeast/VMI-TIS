@@ -179,6 +179,7 @@ export interface AssessmentRecord {
   beeryMcStd?: number;
   tvps4Std?: number;
   mvpt3Std?: number;
+  mvpt4Std?: number;
   demNormTier?: string;
   radarScoresJson?: string; // JSON.stringify({stabilize:70, efficiency:68, ...})
   assessmentMetaJson?: string; // JSON.stringify(AssessmentMeta)
@@ -311,10 +312,18 @@ export interface AuditReferralDto {
 export interface SubmitScaleScoreDto {
   studentId: string;
   evalPhase: EvalPhase;
+  sessionId?: string;
+  itemIndex?: number;
+  score?: number;
+  reset?: boolean;
+  /** @deprecated 历史字段；scale-score 只做 R2 判分，不读该值 */
   beeryVmiRaw?: number;
+  /** @deprecated 历史字段；scale-score 只做 R2 判分，不读该值 */
   tvps4Std?: number;
+  /** @deprecated 历史字段；scale-score 只做 R2 判分，不读该值 */
   mvpt3Std?: number;
-  // ... 其他评估指标
+  /** @deprecated 历史字段；scale-score 只做 R2 判分，不读该值 */
+  npcCm?: number;
 }
 
 /** POST /api/iep-plans 创建 IEP 计划请求 */
@@ -472,6 +481,9 @@ export interface AutoLevelInput {
   nsucoScore?: { pursuit: number; saccade: number };
   tvps4Std?: number;
   mvpt3Std?: number;
+  mvpt4RawScore?: number;
+  mvpt4ItemScores45?: number[];
+  mvpt4Std?: number;
   beeryVmiStd?: number;
   /** 课堂抄写/文具使用补充评估；false → L4，true/未测 → L5 */
   classroomAdaptationPass?: boolean;
@@ -536,6 +548,20 @@ export interface AssessmentMeta {
       matchedSopCards: string[];
     }>;
   };
+  mvpt4?: {
+    rawScore: number | null;
+    standardScore: number | null;
+    percentileRank: number | null;
+    ageEquivalentLabel: string;
+    normApplied: boolean;
+    normNote: string;
+    weakestDomains: Array<{
+      domainCode: string;
+      domainNameCn: string;
+      accuracyPct: number;
+      matchedSopCards: string[];
+    }>;
+  };
   dem?: {
     verticalTotalSec: number;
     horizontalAdjustedSec: number;
@@ -548,7 +574,8 @@ export interface AssessmentMeta {
     spsrcSensoryStable: boolean;
     classroomCopyAccuracyPct?: number;
     nsucoMinScore: number;
-    tvpsOverallStdScore: number;
+    tvpsOverallStdScore?: number;
+    mvpt4StdScore?: number;
     beeryVmiStdScore: number;
     beeryVpStdScore?: number;
     beeryMcStdScore?: number;
@@ -559,6 +586,9 @@ export interface AssessmentMeta {
     beeryVpRaw?: number;
     beeryMcRaw?: number;
     tvps4RawScores?: Tvps4RawScores;
+    mvpt4RawScore?: number;
+    mvpt4ItemScores45?: number[];
+    mvpt4ManualStd?: number;
     demRaw?: DemRawInput;
     nsucoScore?: { pursuit: number; saccade: number; vergence?: number };
   };

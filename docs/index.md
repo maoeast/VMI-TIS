@@ -24,7 +24,7 @@
 | 产品需求 / 详细设计 | `vmi_tis.md` | **权威源**：SRS、八大功能模块、技术栈、Android 适配、R1–R4、数据库/API/部署 |
 | 原型与参考 | `vmi_tis_prototype.html`、`book/`、`孤独症学生视觉运动整合训练干预系统设计方案.docx` | 视觉/方法学参考；不作为当前实现契约 |
 | 实施任务卡 | `IMPLEMENTATION_TASKS.md` | Task 1–6 的目标、产出文件、关键逻辑与验收标准 |
-| 评估题库 / 常模 / 公式 | `../packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` | 评估模块**唯一数据与公式源**：5 个纯函数 + 常量数组；禁止重写公式或编造题目 |
+| 评估题库 / 常模 / 公式 | `../packages/shared-types/src/vmi_tis_assessment_scales_seed.ts` | 评估模块**唯一数据与公式源**：5 个纯函数 + 常量数组；数据状态与出处见 `SCALE_PROVENANCE_REGISTRY`；禁止重写公式或编造题目 |
 | 历史进度 | `PROGRESS.md` | 按任务/日期记录已完成、验证、偏差与下一步；**只追加，不回写成当前状态** |
 | 当前现场 | `../.continue-here.md` | 跨会话状态快照；会话结束按 `会话结束.md` 全量覆写 |
 | 会话流程 | `会话启动.md` / `会话结束.md` | AI 助手会话的恢复/收尾流程；HANDOFF 区块是现场摘要；收尾默认输出费曼式报告 + 四行摘要 |
@@ -43,7 +43,7 @@
 - ✅ b1 红区结构化编码（`71546b8`）、b2 评估五步向导（`297efc2`）、b3 入口分离 / b4 跨窗口选学生 / b5 评估双屏（`0c5b0ea` 等）均已提交并收口；未 push。
 - ✅ 平板实测：b3 学生包直达 `/student`（无三端切换、学生选择器保留）；b4 教师选学生后平板跟随；b5 教师出示 Beery 后平板只读跟随。
 - ⏳ Windows API 3000 仍是旧 dist，LAN 上 b4/b5 需重启 API 窗口生效；b5 的 LAN APK 已构建未装。
-- ⏳ 工作区有来源不明的 V2.1 种子（MVPT-4）未提交，待用户决定采用与否。
+- ✅ 评估种子已升级到 V2.3.1（MVPT-4 + 量表数据状态标签）；b6 数据溯源修正、b7 MVPT-4 后端/前端接入均已收口；未 commit/push。
 - 已知偏差：Kiosk、RBAC、HTML 报告、R2 进程内状态、眼动仪 60Hz、便携 Node、`npm audit` 43 项、Docker 端口冲突；b4 教师页两条 therapist socket；b5 TVPS 5s 平板逐题未单独实测。
 
 ## 文档维护规范

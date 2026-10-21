@@ -363,3 +363,22 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 主代理复核：Node 20 `build`/`verify:all` 全绿（b5 9 项断言）；平板 b3 学生包、b4 刘诺一跟随、b5 Beery 只读出示均已实测。
 - 工作区另有 V2.1 种子（MVPT-4，来源 Gemini）未提交、未清理；含该改动时 `build`/`verify:all` 仍全绿；待用户决定采用与否。
 
+## 2026-10-21 评估种子 V2.3.1 数据溯源修正（b6）
+
+- ✅ 采用 V2.3 种子（Windows 树复制进 WSL），修订为 V2.3.1：新增 `SCALE_PROVENANCE_REGISTRY`（10 个量表，含 `dataStatus` 与文献出处）、NSUCO 分龄表、MVPT-4 45 / TVPS-4 126 / Beery VP 30 / MC 30 / TVMS-3 39 条题号索引、RAN/RAS 4 套 5×10 矩阵、SPSRC 37+93 结构。
+- ✅ 修五个硬缺陷：定级对 TVPS-4/MVPT-4 取较低值；MVPT-4 14 岁以上不自动换算（`standardScore: null`）；出处注册表与数据对齐；RAS 矩阵补池内 `6` 且无相邻重复；删除未实现的 `CustomNormOverride` 声明。
+- ✅ 文档：还原 `docs/vmi_tis.md` 的 Gemini 重写，保留 HTML 报告与“不伪造题库”口径；支持量表改 MVPT-4，新增数据来源分级说明（`docs/vmi_tis.md:52,59,60`）。
+- 验证：Node v20.20.2，`npm run build` EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿；全新临时 SQLite `file:/tmp/vmi_b6_verify_20261021.db` 的 `db:push + db:seed + db:verify` 全通过（13 卡 / 6 学生）。开发库 `apps/api/data/vmi_tis.db` 有 65 名学生（历史测试数据），未清理。
+- 未验证：b7 的 DTO / Prisma `mvpt4Std` 列 / 前端 MVPT-4 记分台 / 报告行；浏览器 UI 与平板真机未做。
+- 未 commit/push；b6 记录 `docs/batches/b6-assessment-provenance.md` 待独立评审与用户验收。
+- 独立评审两轮（第一轮 9 项，第二轮 8 Fixed / 1 Accepted / 1 Unfixed 🔵，VERDICT pass）；评审修复后 `npm run verify:all` 复跑 Task 2/3/4/6 全绿；b6 已收口（2026-10-21）。
+
+## 2026-10-21 MVPT-4 后端与前端接入（b7）
+
+- ✅ 后端：DTO 增 `mvpt4RawScore` / `mvpt4ItemScores45`（45 项 0/1）/ `mvpt4Std`；Prisma `mvpt4Std` 列；`AssessmentGradingService` 调 `calculateMvpt4Norms`，手册标准分优先、自动换算兜底；`meta.mvpt4` 保存原始分、标准分、百分位、等效年龄、`normApplied/normNote` 与薄弱维度；报告增 MVPT-4 标准分/来源/原始分/等效年龄/薄弱维度行。
+- ✅ 前端：第 4 步 MVPT-4 45 题记分台（5 维 × 9 题三态、MEM 5 秒提示、薄弱维度提示、回填原始分）；`RecordSummary` 表单/汇总/保存后卡片；`AssessmentPage` 提交 45 项数组；新流程移除 MVPT-3 录入。
+- 验证：`npm run build` EXIT 0；`npm run verify:all` Task 2/3/4/6 全绿，Task 3 新增 8 项 MVPT-4 断言（逐题全 1、手册 70→L2、手册优先、44 项→400、14+→null、全 0→5 薄弱域、报告两行）；临时库 `db:verify` 通过；开发库已 `db:push` 增 `mvpt4_std` 列（65 名历史学生未清理）。
+- 未验证：浏览器 UI 与平板真机；14 岁以上只给 raw 的端到端 API 行为（种子函数已断言）；报告四类数据状态标签。
+- 未 commit/push；b7 记录 `docs/batches/b7-mvpt4-integration.md` 已收口（独立评审两轮，第二轮 pass）。
+
+

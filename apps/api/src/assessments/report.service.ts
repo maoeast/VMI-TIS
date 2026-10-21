@@ -59,6 +59,7 @@ export class ReportService {
       beeryVmiStd: number | null;
       tvps4Std: number | null;
       mvpt3Std: number | null;
+      mvpt4Std: number | null;
       demNormTier: string | null;
       radarScoresJson: string | null;
       assessmentMetaJson: string | null;
@@ -72,12 +73,32 @@ export class ReportService {
     const grading = this.asRecord(meta.grading);
     const dem = this.asRecord(meta.dem);
     const tvps4 = this.asRecord(meta.tvps4);
+    const mvpt4 = this.asRecord(meta.mvpt4);
     const escape = (value: unknown): string =>
       String(value ?? '—')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
+
+    const mvpt4Weakest = Array.isArray(mvpt4.weakestDomains)
+      ? (mvpt4.weakestDomains as Array<Record<string, unknown>>)
+      : [];
+    const mvpt4WeakestText =
+      mvpt4Weakest.length > 0
+        ? mvpt4Weakest
+            .map(
+              (item) =>
+                `${escape(item.domainNameCn)} ${escape(item.accuracyPct)}%`,
+            )
+            .join('、')
+        : '无（未录入逐题或各维度正确率 ≥65%）';
+    const mvpt4Source =
+      record.mvpt4Std == null
+        ? '未录入'
+        : mvpt4.normApplied === false
+          ? '手册录入'
+          : '内置参考换算';
 
     return `<!doctype html>
 <html lang="zh-CN">
@@ -117,7 +138,12 @@ export class ReportService {
   <table>
     <tr><th>Beery VMI-6 标准分</th><td>${escape(record.beeryVmiStd)}</td></tr>
     <tr><th>TVPS-4 标准分</th><td>${escape(record.tvps4Std)}</td></tr>
-    <tr><th>MVPT-3 标准分</th><td>${escape(record.mvpt3Std)}</td></tr>
+    <tr><th>MVPT-4 标准分</th><td>${escape(record.mvpt4Std)}</td></tr>
+    <tr><th>MVPT-4 标准分来源</th><td>${escape(mvpt4Source)}</td></tr>
+    <tr><th>MVPT-4 原始分 / 百分位</th><td>${escape(mvpt4.rawScore)} / ${escape(mvpt4.percentileRank)}</td></tr>
+    <tr><th>MVPT-4 等效年龄 / 说明</th><td>${escape(mvpt4.ageEquivalentLabel)} / ${escape(mvpt4.normNote)}</td></tr>
+    <tr><th>MVPT-4 薄弱维度</th><td>${escape(mvpt4WeakestText)}</td></tr>
+    <tr><th>MVPT-3 标准分（历史）</th><td>${escape(record.mvpt3Std)}</td></tr>
   </table>
 
   <h2>三、六维能力雷达</h2>
