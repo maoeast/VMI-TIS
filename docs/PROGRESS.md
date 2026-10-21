@@ -357,3 +357,9 @@ curl http://localhost:3000/web/home  # SPA 深链回退正常
 - 验证：`VITE_TERMINAL=student` + LAN env（`192.168.0.188:3000`）构建、`npx cap sync android`、`./gradlew assembleDebug` 成功（APK 4,173,454 B，`com.vmitis.pad`，minSdk 22 / targetSdk 34，`apksigner verify` 通过，bundle 含 `ASSESSMENT_CARD_CHANGE` 与 `192.168.0.188`）。
 - 未验证：平板真机安装/运行与跟随（交主代理）；本机 Linux 下 Node 为 v24.22.0（项目基线 v20.20.2）。
 - 未 commit/push。
+
+### 提交、收口与会话结束（2026-10-21）
+- b3/b4/b5 分批提交：`0c5b0ea`（b3 入口分离代码 + b3 记录）、`36a50fa`（b4 记录）、`ee53b65`（b5 记录 + 文档 + 交接）、`29a366a`（b3/b4/b5 收口）；未 push。
+- 主代理复核：Node 20 `build`/`verify:all` 全绿（b5 9 项断言）；平板 b3 学生包、b4 刘诺一跟随、b5 Beery 只读出示均已实测。
+- 工作区另有 V2.1 种子（MVPT-4，来源 Gemini）未提交、未清理；含该改动时 `build`/`verify:all` 仍全绿；待用户决定采用与否。
+
